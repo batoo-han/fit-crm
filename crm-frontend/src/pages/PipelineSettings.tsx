@@ -66,11 +66,18 @@ const PipelineSettings = () => {
     },
   })
 
-  const handleSave = (id: number) => {
-    const data = editingData[id]
-    if (data) {
-      updateMutation.mutate({ id, data })
-    }
+  const handleSave = (id: number, data: any) => {
+    updateMutation.mutate(
+      { id, data },
+      {
+        onSuccess: () => {
+          setEditingStage(null)
+          const newEditingData = { ...editingData }
+          delete newEditingData[id]
+          setEditingData(newEditingData)
+        },
+      }
+    )
   }
 
   const handleEditStart = (stage: any) => {
@@ -87,12 +94,6 @@ const PipelineSettings = () => {
     })
   }
 
-  const handleEditCancel = (id: number) => {
-    setEditingStage(null)
-    const newEditingData = { ...editingData }
-    delete newEditingData[id]
-    setEditingData(newEditingData)
-  }
 
   const handleCreate = () => {
     createMutation.mutate(formData)
@@ -149,7 +150,12 @@ const PipelineSettings = () => {
                 <StageEditForm
                   stage={stage}
                   onSave={(data) => handleSave(stage.id, data)}
-                  onCancel={() => setEditingStage(null)}
+                  onCancel={() => {
+                    setEditingStage(null)
+                    const newEditingData = { ...editingData }
+                    delete newEditingData[stage.id]
+                    setEditingData(newEditingData)
+                  }}
                 />
               ) : (
                 <div className="flex items-center justify-between">

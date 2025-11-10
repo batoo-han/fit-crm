@@ -1,26 +1,44 @@
 import { useParams, useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api } from '../services/api'
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
+
+interface Client {
+  id: number
+  first_name: string
+  last_name?: string
+  telegram_username?: string
+  phone_number?: string
+  age?: number
+  gender?: string
+  height?: number
+  weight?: number
+  bmi?: string
+  pipeline_stage_id?: number | null
+  status?: string
+}
 
 const ClientDetail = () => {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const [isEditing, setIsEditing] = useState(false)
-  const [formData, setFormData] = useState<any>({})
+  const [formData, setFormData] = useState<Partial<Client>>({})
 
-  const { data: client, isLoading } = useQuery({
+  const { data: client, isLoading } = useQuery<Client>({
     queryKey: ['client', id],
     queryFn: async () => {
       const response = await api.get(`/clients/${id}`)
       return response.data
     },
-    onSuccess: (data) => {
-      setFormData(data)
-    },
   })
+
+  useEffect(() => {
+    if (client) {
+      setFormData(client)
+    }
+  }, [client])
 
   const { data: programs } = useQuery({
     queryKey: ['client-programs', id],
@@ -38,14 +56,6 @@ const ClientDetail = () => {
     },
   })
 
-  const { data: progress } = useQuery({
-    queryKey: ['client-progress', id],
-    queryFn: async () => {
-      const response = await api.get(`/progress/${id}`)
-      return response.data
-    },
-  })
-
   const { data: stages } = useQuery({
     queryKey: ['pipeline-stages'],
     queryFn: async () => {
@@ -57,6 +67,14 @@ const ClientDetail = () => {
   // Локальный выбор этапа с явным сохранением
   const [pendingStageId, setPendingStageId] = useState<number | ''>('')
   const [initialStageId, setInitialStageId] = useState<number | ''>('')
+
+  useEffect(() => {
+    if (client && client.pipeline_stage_id !== undefined) {
+      const stageId = client.pipeline_stage_id || ''
+      setInitialStageId(stageId)
+      setPendingStageId(stageId)
+    }
+  }, [client])
 
   const { data: pipelineHistory } = useQuery({
     queryKey: ['client-pipeline-history', id],
@@ -112,12 +130,6 @@ const ClientDetail = () => {
 
   if (!client) {
     return <div>Клиент не найден</div>
-  }
-
-  // Инициализация локального состояния этапа при загрузке клиента
-  if (initialStageId === '' && typeof client.pipeline_stage_id !== 'undefined') {
-    setInitialStageId(client.pipeline_stage_id || '')
-    setPendingStageId(client.pipeline_stage_id || '')
   }
 
   return (

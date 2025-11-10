@@ -90,12 +90,12 @@ const Analytics = () => {
                   fill="#8884d8"
                   dataKey="count"
                 >
-                  {conversion.map((entry: any, index: number) => (
+                  {conversion.map((_entry: any, index: number) => (
                     <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                   ))}
                 </Pie>
                 <Tooltip 
-                  formatter={(value: any, name: any, props: any) => [
+                  formatter={(value: any, _name: any, props: any) => [
                     `${props.payload.stage_name}: ${value}`,
                     'Количество'
                   ]}
@@ -103,7 +103,7 @@ const Analytics = () => {
                 <Legend 
                   verticalAlign="bottom" 
                   height={36}
-                  formatter={(value: any, entry: any) => `${entry.payload.stage_name}: ${entry.payload.count}`}
+                  formatter={(_value: any, entry: any) => `${entry.payload.stage_name}: ${entry.payload.count}`}
                 />
               </PieChart>
             </ResponsiveContainer>

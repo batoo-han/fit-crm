@@ -32,13 +32,6 @@ const Progress = () => {
     },
   })
 
-  const { data: chartData } = useQuery({
-    queryKey: ['progress-chart', clientId],
-    queryFn: async () => {
-      const response = await api.get(`/progress/${clientId}/chart`)
-      return response.data
-    },
-  })
 
   const addMutation = useMutation({
     mutationFn: async (data: any) => {

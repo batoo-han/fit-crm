@@ -6,7 +6,6 @@ import { Link } from 'react-router-dom'
 const Pipeline = () => {
   const queryClient = useQueryClient()
   const [selectedClient, setSelectedClient] = useState<number | null>(null)
-  const [targetStage, setTargetStage] = useState<number | null>(null)
 
   const { data: stages } = useQuery({
     queryKey: ['pipeline-stages'],

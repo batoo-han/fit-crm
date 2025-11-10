@@ -165,16 +165,16 @@ const WebsiteSettings = () => {
           />
         )}
         {activeTab === 'header' && (
-          <HeaderSettings settings={settings.header || {}} updateSetting={(key, value) => updateSetting('header', key, value)} />
+          <HeaderSettings settings={settings.header || {}} updateSetting={(key: string, value: any) => updateSetting('header', key, value)} />
         )}
         {activeTab === 'footer' && (
-          <FooterSettings settings={settings.footer || {}} updateSetting={(key, value) => updateSetting('footer', key, value)} />
+          <FooterSettings settings={settings.footer || {}} updateSetting={(key: string, value: any) => updateSetting('footer', key, value)} />
         )}
         {activeTab === 'colors' && (
-          <ColorsSettings settings={settings.colors || {}} updateSetting={(key, value) => updateSetting('colors', key, value)} />
+          <ColorsSettings settings={settings.colors || {}} updateSetting={(key: string, value: any) => updateSetting('colors', key, value)} />
         )}
         {activeTab === 'fonts' && (
-          <FontsSettings settings={settings.fonts || {}} updateSetting={(key, value) => updateSetting('fonts', key, value)} />
+          <FontsSettings settings={settings.fonts || {}} updateSetting={(key: string, value: any) => updateSetting('fonts', key, value)} />
         )}
         {activeTab === 'widget' && (
           <WidgetSettings settings={widgetSettings || {}} updateSetting={handleWidgetSettingChange} />

@@ -1,7 +1,7 @@
 import { useParams } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api } from '../services/api'
-import { useState, useMemo, useEffect } from 'react'
+import { useState, useMemo } from 'react'
 import EditableTable from '../components/EditableTable'
 import React from 'react'
 
