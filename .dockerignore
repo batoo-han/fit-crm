@@ -1,0 +1,26 @@
+# Global ignores
+.git
+.gitignore
+.env
+.venv
+__pycache__/
+*.py[cod]
+*.log
+logs/
+*.db
+*.sqlite*
+node_modules/
+npm-debug.log*
+dist/
+build/
+
+# Editor/OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Local website (not needed in images)
+dnk/
+
+

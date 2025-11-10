@@ -1,0 +1,41 @@
+# syntax=docker/dockerfile:1
+FROM python:3.11-slim AS base
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PIP_NO_CACHE_DIR=1 \
+    POETRY_VIRTUALENVS_CREATE=false \
+    UVICORN_WORKERS=2 \
+    APP_PORT=8000
+
+WORKDIR /app
+
+# System deps
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential curl ca-certificates \
+ && rm -rf /var/lib/apt/lists/*
+
+# Python deps
+COPY requirements.txt /app/requirements.txt
+RUN pip install --no-cache-dir -r /app/requirements.txt
+
+# App
+COPY . /app
+
+# Create runtime directories
+RUN mkdir -p /app/logs /data
+
+# Expose internal app port
+EXPOSE 8000
+
+# Healthcheck: simple TCP check on 8000
+HEALTHCHECK --interval=30s --timeout=5s --retries=5 CMD \
+  python -c "import socket; s=socket.socket(); s.settimeout(3); s.connect(('127.0.0.1', 8000)); s.close()"
+
+# SQLite file and logs outside code dir (mounted volume recommended)
+ENV DATABASE_URL=sqlite:///data/crm.db
+
+# Start
+CMD ["uvicorn", "crm_api.main:app", "--host", "0.0.0.0", "--port", "8000", "--proxy-headers"]
+
+
