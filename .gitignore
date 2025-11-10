@@ -50,3 +50,4 @@ tmp/
 # Local website (exclude from VCS, used only for local integration)
 dnk/
 analiz/
+task*.txt
