@@ -8,8 +8,8 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from database.db import get_db_session, engine
 from database.models import Base
 from database.models_crm import (
-    PipelineStage, User, ClientPipeline, ClientAction, 
-    ClientContact, ProgressJournal
+    PipelineStage, User, ClientPipeline, ClientAction,
+    ClientContact, ProgressJournal, ClientBotLink, Reminder
 )
 from loguru import logger
 import bcrypt
@@ -25,7 +25,7 @@ def create_tables():
         from database.models import Client, TrainingProgram, Payment, Lead, WebsiteContact, WebsiteSettings
         from database.models_crm import (
             PipelineStage, User, ClientPipeline, ClientAction,
-            ClientContact, ProgressJournal
+            ClientContact, ProgressJournal, ClientBotLink, Reminder
         )
         
         # Create all tables

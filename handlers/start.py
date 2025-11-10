@@ -1,5 +1,6 @@
 """Start command handler and main menu."""
 from aiogram import Router, F
+from aiogram.filters import CommandStart
 from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.fsm.context import FSMContext
 from loguru import logger
@@ -7,6 +8,8 @@ from config import TRAINER_NAME, TRAINER_TELEGRAM, TRAINER_PHONE
 from database.db import get_db_session
 from database.models import Client, TrainingProgram
 from handlers.utils import safe_callback_answer
+from services.bot_link_service import use_bot_invite_token
+from database.models_crm import ClientBotLink
 
 router = Router()
 
@@ -93,7 +96,7 @@ def format_client_data(client: Client) -> str:
     return "\n".join(data_parts) if data_parts else "Данные не указаны"
 
 
-@router.message(F.text == "/start")
+@router.message(CommandStart())
 async def cmd_start(message: Message, state: FSMContext):
     """Handle /start command."""
     await state.clear()
@@ -102,24 +105,54 @@ async def cmd_start(message: Message, state: FSMContext):
     user_id = message.from_user.id
     username = message.from_user.username
     first_name = message.from_user.first_name
+    start_payload = ""
+    if message.text and " " in message.text:
+        start_payload = message.text.split(" ", 1)[1].strip()
+    elif hasattr(message, "get_args"):
+        start_payload = (message.get_args() or "").strip()
     
     # Create or update client in database
     db = get_db_session()
     client = None
     is_new_client = False
+    context_data = None
+    source = None
+    
     try:
         client = db.query(Client).filter(Client.telegram_id == user_id).first()
+
+        if start_payload:
+            # Try to link client via invite token
+            linked_client, linked, link_context = use_bot_invite_token(
+                db=db,
+                token=start_payload,
+                telegram_id=user_id,
+                username=username,
+                first_name=first_name,
+            )
+            if linked_client:
+                client = linked_client
+                context_data = link_context
+                # Determine source from bot link
+                if linked:
+                    bot_link = db.query(ClientBotLink).filter(
+                        ClientBotLink.invite_token == start_payload
+                    ).first()
+                    if bot_link:
+                        source = bot_link.source
+                db.commit()
+
         if not client:
             client = Client(
                 telegram_id=user_id,
                 telegram_username=username,
-                first_name=first_name
+                first_name=first_name,
             )
             db.add(client)
             db.commit()
             is_new_client = True
             logger.info(f"New client registered: {user_id}")
-            
+
             # Integrate with CRM
             try:
                 from services.crm_integration import CRMIntegration
@@ -144,9 +177,22 @@ async def cmd_start(message: Message, state: FSMContext):
     if client and client.id:
         has_free = has_free_program(client.id)
     
-    # Welcome message based on client status
-    if is_new_client:
-        welcome_text = f"""
+    # Generate personalized welcome message
+    try:
+        from services.welcome_service import WelcomeService
+        welcome_text = WelcomeService.get_welcome_message(
+            client=client,
+            is_new_client=is_new_client,
+            context_data=context_data,
+            source=source
+        )
+    except Exception as e:
+        logger.error(f"Error generating welcome message: {e}")
+        import traceback
+        traceback.print_exc()
+        # Fallback to default message
+        if is_new_client:
+            welcome_text = f"""
 🏋️ Привет, {first_name}! Меня зовут {TRAINER_NAME}.
 
 Я помогу тебе достичь твоих фитнес-целей! 
@@ -159,25 +205,20 @@ async def cmd_start(message: Message, state: FSMContext):
 • Онлайн-тренировки с тренером
 
 Выбери, что тебе интересно 👇
-        """
-        await message.answer(
-            welcome_text,
-            reply_markup=get_main_menu_keyboard(has_free_program=has_free)
-        )
-    else:
-        # Existing client
-        welcome_text = f"""
+            """
+        else:
+            welcome_text = f"""
 🏋️ С возвращением, {first_name}!
 
 Я помогу тебе достичь твоих фитнес-целей! 
 
 Выбери, что тебе интересно 👇
-        """
-        
-        await message.answer(
-            welcome_text,
-            reply_markup=get_main_menu_keyboard(has_free_program=has_free)
-        )
+            """
+    
+    await message.answer(
+        welcome_text,
+        reply_markup=get_main_menu_keyboard(has_free_program=has_free)
+    )
 
 
 @router.callback_query(F.data == "back_to_menu")

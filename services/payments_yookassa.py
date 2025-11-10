@@ -5,6 +5,7 @@ import uuid  # Built-in Python module
 from typing import Any, Dict, Optional
 
 from config import YOOKASSA_SHOP_ID, YOOKASSA_SECRET_KEY, YOOKASSA_RETURN_URL
+from loguru import logger
 
 
 async def create_yookassa_payment(
@@ -81,4 +82,53 @@ async def create_yookassa_payment(
                 raise RuntimeError(f"YooKassa error {resp.status}: {data}")
             return data
 
+
+async def get_yookassa_payment_status(payment_id: str) -> Dict[str, Any]:
+    """Get payment status from YooKassa.
+    
+    Args:
+        payment_id: YooKassa payment ID
+        
+    Returns:
+        Dict with payment status and details
+        
+    Raises:
+        RuntimeError: If credentials are not configured or API error occurs
+    """
+    if not (YOOKASSA_SHOP_ID and YOOKASSA_SECRET_KEY):
+        raise RuntimeError("YooKassa credentials are not configured")
+    
+    url = f"https://api.yookassa.ru/v3/payments/{payment_id}"
+    auth = base64.b64encode(f"{YOOKASSA_SHOP_ID}:{YOOKASSA_SECRET_KEY}".encode()).decode()
+    
+    headers = {
+        "Authorization": f"Basic {auth}",
+        "Content-Type": "application/json",
+    }
+    
+    async with aiohttp.ClientSession() as session:
+        async with session.get(url, headers=headers, timeout=30) as resp:
+            data = await resp.json()
+            if resp.status >= 400:
+                logger.error(f"YooKassa get status error {resp.status}: {data}")
+                raise RuntimeError(f"YooKassa error {resp.status}: {data}")
+            return data
+
+
+def parse_yookassa_status(yookassa_status: str) -> str:
+    """Parse YooKassa payment status to internal status.
+    
+    Args:
+        yookassa_status: YooKassa payment status (pending, waiting_for_capture, succeeded, canceled)
+        
+    Returns:
+        Internal status (pending, completed, failed)
+    """
+    status_map = {
+        "pending": "pending",
+        "waiting_for_capture": "pending",
+        "succeeded": "completed",
+        "canceled": "failed",
+    }
+    return status_map.get(yookassa_status, "pending")
 

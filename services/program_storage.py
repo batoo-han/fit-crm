@@ -3,6 +3,7 @@ from database.db import get_db_session
 from database.models import TrainingProgram, Client
 from typing import Optional, Dict, Any
 from loguru import logger
+from datetime import datetime
 import json
 
 
@@ -55,16 +56,31 @@ class ProgramStorage:
                 program_type=program_type,
                 program_data=json.dumps(program_data, ensure_ascii=False),
                 formatted_program=formatted_program,
-                is_paid=(program_type in ["paid_monthly", "paid_3month"])
+                is_paid=(program_type in ["paid_monthly", "paid_3month"]),
+                assigned_at=datetime.utcnow()
             )
             db.add(program)
             db.commit()
+            db.refresh(program)
             
             # Update client's current program
             client = db.query(Client).filter(Client.id == client_id).first()
             if client:
                 client.current_program_id = program.id
                 db.commit()
+            
+            # Create reminders for free program
+            if program_type == "free_demo" and program.assigned_at:
+                try:
+                    from services.reminder_service import ReminderService
+                    ReminderService.create_free_program_reminders(
+                        client_id=client_id,
+                        program_id=program.id,
+                        program_assigned_at=program.assigned_at
+                    )
+                    logger.info(f"Created reminders for free program {program.id}")
+                except Exception as e:
+                    logger.error(f"Error creating reminders: {e}")
             
             logger.info(f"Program saved: ID {program.id} for client {client_id}")
             return program.id

@@ -8,11 +8,15 @@ from database.models import WebsiteContact, Client
 from database.models_crm import PipelineStage, ClientPipeline, ClientAction, ClientContact, ActionType, ContactType, ContactDirection
 from datetime import datetime
 from loguru import logger
-from config import TELEGRAM_BOT_TOKEN, ADMIN_CHAT_ID
+from config import TELEGRAM_BOT_TOKEN, ADMIN_CHAT_ID, TELEGRAM_BOT_USERNAME
 from aiogram import Bot
 from aiogram.exceptions import TelegramBadRequest
 import re
 from services.pipeline_service import PipelineAutomation
+from services.bot_link_service import (
+    get_or_create_bot_link,
+    build_bot_invite_link,
+)
 
 INITIAL_FOLLOW_UP_HOURS = 12
 
@@ -28,7 +32,7 @@ class ContactFormRequest(BaseModel):
     message: str | None = None
 
 
-async def send_telegram_notification(form_data: ContactFormRequest) -> bool:
+async def send_telegram_notification(form_data: ContactFormRequest, bot_invite_url: str | None = None) -> bool:
     """Send notification to owner via Telegram bot."""
     try:
         if not TELEGRAM_BOT_TOKEN or not ADMIN_CHAT_ID:
@@ -58,6 +62,9 @@ async def send_telegram_notification(form_data: ContactFormRequest) -> bool:
         
         if form_data.message:
             message_text += f"\n\n💬 Сообщение:\n{form_data.message}"
+        
+        if bot_invite_url:
+            message_text += f"\n\n🤖 Пригласительная ссылка: {bot_invite_url}"
         
         message_text += f"\n\n⏰ {datetime.now().strftime('%d.%m.%Y %H:%M')}"
         
@@ -263,21 +270,44 @@ async def submit_contact_form(form_data: ContactFormRequest):
             follow_up_hours_override=INITIAL_FOLLOW_UP_HOURS,
         )
 
+        # Generate bot invite link with context data for personalization
+        context_data = {
+            "source": "website_contact",
+            "service": form_data.service,
+            "message": form_data.message,
+            "name": form_data.name,
+        }
+        bot_link = get_or_create_bot_link(
+            db, 
+            client=client, 
+            source="website_contact",
+            context_data=context_data
+        )
+        bot_invite_url = build_bot_invite_link(bot_link.invite_token)
+
         db.commit()
         logger.info(f"Created action and contact for client {client.id}")
         
         # Отправляем уведомление в Telegram
-        notification_sent = await send_telegram_notification(form_data)
+        notification_sent = await send_telegram_notification(form_data, bot_invite_url)
         if not notification_sent:
             logger.warning(f"Failed to send Telegram notification for contact {contact.id}")
         
-        return {
+        response = {
             "success": True,
             "message": "Заявка успешно отправлена! Мы свяжемся с вами в ближайшее время.",
             "contact_id": contact.id,
             "client_id": client.id,
-            "is_new_client": is_new_client
+            "is_new_client": is_new_client,
+            "bot_invite_token": bot_link.invite_token,
+            "bot_invite_link": bot_invite_url,
+            "bot_username": TELEGRAM_BOT_USERNAME,
         }
+
+        if bot_link.expires_at:
+            response["bot_invite_expires_at"] = bot_link.expires_at.isoformat()
+
+        return response
         
     except Exception as e:
         logger.error(f"Error processing contact form: {e}")

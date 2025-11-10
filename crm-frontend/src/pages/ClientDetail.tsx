@@ -133,6 +133,9 @@ const ClientDetail = () => {
           <h1 className="text-3xl font-bold text-gray-900">
             {client.first_name} {client.last_name || ''}
           </h1>
+          <p className="text-sm text-gray-500 mt-1">
+            ID клиента: <span className="font-mono">{client.id}</span>
+          </p>
         </div>
         <div className="flex gap-2">
           {isEditing ? (

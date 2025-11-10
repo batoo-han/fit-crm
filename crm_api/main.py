@@ -16,7 +16,7 @@ import os
 # Создаём директорию для логов, если её нет
 os.makedirs("logs", exist_ok=True)
 
-from crm_api.routers import auth, clients, pipeline, programs, progress, actions, contacts, analytics, website, website_chat, website_settings
+from crm_api.routers import auth, clients, pipeline, programs, progress, actions, contacts, analytics, website, website_chat, website_settings, reminders, payments
 from database.init_crm import init_crm
 
 
@@ -145,6 +145,8 @@ app.include_router(analytics.router, prefix="/api/analytics", tags=["analytics"]
 app.include_router(website.router, prefix="/api/website", tags=["website"])
 app.include_router(website_chat.router, prefix="/api/website", tags=["website-chat"])
 app.include_router(website_settings.router, prefix="/api/website", tags=["website-settings"])
+app.include_router(reminders.router, prefix="/api/reminders", tags=["reminders"])
+app.include_router(payments.router, prefix="/api/payments", tags=["payments"])
 
 
 @app.get("/")

@@ -46,6 +46,8 @@ class Client(Base):
     actions = relationship("ClientAction", back_populates="client", foreign_keys="[ClientAction.client_id]")
     contacts = relationship("ClientContact", back_populates="client", foreign_keys="[ClientContact.client_id]")
     progress_entries = relationship("ProgressJournal", back_populates="client", foreign_keys="[ProgressJournal.client_id]")
+    reminders = relationship("Reminder", back_populates="client", foreign_keys="[Reminder.client_id]")
+    bot_links = relationship("ClientBotLink", back_populates="client", foreign_keys="[ClientBotLink.client_id]")
 
 
 class TrainingProgram(Base):

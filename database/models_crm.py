@@ -43,6 +43,25 @@ class ClientPipeline(Base):
     moved_by_user = relationship("User", foreign_keys="[ClientPipeline.moved_by]")
 
 
+class ClientBotLink(Base):
+    """Mapping tokens to clients for Telegram deep links."""
+    __tablename__ = "client_bot_links"
+
+    id = Column(Integer, primary_key=True)
+    client_id = Column(Integer, ForeignKey("clients.id"), nullable=False)
+    invite_token = Column(String(64), unique=True, nullable=False, index=True)
+    source = Column(String(50), nullable=True, default="website_contact")
+    # Контекст для персонального приветствия (JSON string with service, message, etc.)
+    context_data = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    expires_at = Column(DateTime, nullable=True)
+    used_at = Column(DateTime, nullable=True)
+    used_by_telegram_id = Column(Integer, nullable=True)
+    notes = Column(Text, nullable=True)
+
+    client = relationship("Client", back_populates="bot_links", foreign_keys="[ClientBotLink.client_id]")
+
+
 class ActionType(enum.Enum):
     """Types of actions with clients."""
     CALL = "call"
@@ -172,6 +191,35 @@ class User(Base):
     # Relationships
     client_actions = relationship("ClientAction", back_populates="creator", foreign_keys="[ClientAction.created_by]")
     pipeline_moves = relationship("ClientPipeline", back_populates="moved_by_user", foreign_keys="[ClientPipeline.moved_by]")
+
+
+class ReminderType(enum.Enum):
+    """Types of reminders."""
+    FREE_PROGRAM_DAY_3 = "free_program_day_3"  # Напоминание через 3 дня после выдачи бесплатной программы
+    FREE_PROGRAM_DAY_5 = "free_program_day_5"  # Напоминание через 5 дней
+    FREE_PROGRAM_DAY_7 = "free_program_day_7"  # Напоминание через 7 дней (предложение оплаты)
+    PAYMENT_REMINDER = "payment_reminder"  # Напоминание об оплате
+    FOLLOW_UP = "follow_up"  # Напоминание о следующем контакте
+
+
+class Reminder(Base):
+    """Reminder model - tracks automated reminders for clients."""
+    __tablename__ = "reminders"
+
+    id = Column(Integer, primary_key=True)
+    client_id = Column(Integer, ForeignKey("clients.id"), nullable=False)
+    program_id = Column(Integer, ForeignKey("training_programs.id"), nullable=True)
+    reminder_type = Column(String(50), nullable=False)  # ReminderType enum as string
+    scheduled_at = Column(DateTime, nullable=False)  # Когда должно быть отправлено
+    sent_at = Column(DateTime, nullable=True)  # Когда было отправлено
+    is_sent = Column(Boolean, default=False)  # Отправлено ли напоминание
+    message_text = Column(Text, nullable=True)  # Текст напоминания
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    # Relationships
+    client = relationship("Client", back_populates="reminders", foreign_keys="[Reminder.client_id]")
+    program = relationship("TrainingProgram", foreign_keys="[Reminder.program_id]")
 
 
 # Обновим существующие модели (добавим relationships)
