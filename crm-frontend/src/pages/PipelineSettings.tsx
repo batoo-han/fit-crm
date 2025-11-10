@@ -314,6 +314,10 @@ const StageEditForm: React.FC<StageEditFormProps> = ({ stage, onSave, onCancel }
     is_active: stage.is_active,
   })
 
+  const handleChange = (key: string, value: any) => {
+    setFormData({ ...formData, [key]: value })
+  }
+
   return (
     <div className="space-y-4">
       <div>

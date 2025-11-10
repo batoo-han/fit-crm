@@ -10,10 +10,10 @@ interface Client {
   last_name?: string
   telegram_username?: string
   phone_number?: string
-  age?: number
+  age?: number | null
   gender?: string
-  height?: number
-  weight?: number
+  height?: number | null
+  weight?: number | null
   bmi?: string
   pipeline_stage_id?: number | null
   status?: string
@@ -254,8 +254,8 @@ const ClientDetail = () => {
                 {isEditing ? (
                   <input
                     type="number"
-                    value={formData.age || ''}
-                    onChange={(e) => setFormData({ ...formData, age: parseInt(e.target.value) || null })}
+                    value={formData.age ?? ''}
+                    onChange={(e) => setFormData({ ...formData, age: e.target.value ? parseInt(e.target.value) : undefined })}
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg"
                   />
                 ) : (
@@ -294,8 +294,8 @@ const ClientDetail = () => {
                 {isEditing ? (
                   <input
                     type="number"
-                    value={formData.height || ''}
-                    onChange={(e) => setFormData({ ...formData, height: parseInt(e.target.value) || null })}
+                    value={formData.height ?? ''}
+                    onChange={(e) => setFormData({ ...formData, height: e.target.value ? parseInt(e.target.value) : undefined })}
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg"
                   />
                 ) : (
@@ -310,8 +310,8 @@ const ClientDetail = () => {
                   <input
                     type="number"
                     step="0.1"
-                    value={formData.weight || ''}
-                    onChange={(e) => setFormData({ ...formData, weight: parseFloat(e.target.value) || null })}
+                    value={formData.weight ?? ''}
+                    onChange={(e) => setFormData({ ...formData, weight: e.target.value ? parseFloat(e.target.value) : undefined })}
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg"
                   />
                 ) : (

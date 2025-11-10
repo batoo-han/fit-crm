@@ -33,7 +33,6 @@ const Pipeline = () => {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['clients'] })
       setSelectedClient(null)
-      setTargetStage(null)
     },
   })
 
