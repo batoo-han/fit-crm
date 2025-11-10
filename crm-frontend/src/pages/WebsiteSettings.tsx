@@ -6,25 +6,30 @@ const LLM_PROVIDERS = [
   { value: 'yandex', label: 'Yandex GPT' },
   { value: 'openai', label: 'OpenAI' },
   { value: 'proxyapi', label: 'OpenAI через ProxyAPI' },
-]
+ ] as const
 
 const YANDEX_MODELS = [
   { value: 'yandexgpt-lite', label: 'Yandex GPT Lite' },
   { value: 'yandexgpt', label: 'Yandex GPT' },
   { value: 'yandexgpt-pro', label: 'Yandex GPT Pro' },
-]
+ ] as const
 
 const OPENAI_MODELS = [
   { value: 'gpt-4-turbo-preview', label: 'GPT-4 Turbo' },
   { value: 'gpt-4', label: 'GPT-4' },
   { value: 'gpt-3.5-turbo', label: 'GPT-3.5 Turbo' },
-]
+ ] as const
 
 const DEFAULT_LLM_MODEL = {
   yandex: 'yandexgpt-lite',
   openai: 'gpt-4-turbo-preview',
   proxyapi: 'gpt-4-turbo-preview',
-}
+} as const
+
+type LlmProvider = keyof typeof DEFAULT_LLM_MODEL
+
+const isLlmProvider = (value: string): value is LlmProvider =>
+  value in DEFAULT_LLM_MODEL
 
 const WebsiteSettings = () => {
   const queryClient = useQueryClient()
@@ -426,9 +431,13 @@ const FontsSettings = ({ settings, updateSetting }: any) => {
 }
 
 const WidgetSettings = ({ settings, updateSetting }: any) => {
-  const llmProvider = settings.llm_provider || 'yandex'
+  const providerValue = settings.llm_provider ?? 'yandex'
+  const llmProvider: LlmProvider = isLlmProvider(providerValue) ? providerValue : 'yandex'
 
-  const availableModels = useMemo(() => (llmProvider === 'yandex' ? YANDEX_MODELS : OPENAI_MODELS), [llmProvider])
+  const availableModels = useMemo(
+    () => (llmProvider === 'yandex' ? YANDEX_MODELS : OPENAI_MODELS),
+    [llmProvider]
+  )
 
   useEffect(() => {
     const currentModel = settings.llm_model
@@ -441,11 +450,10 @@ const WidgetSettings = ({ settings, updateSetting }: any) => {
   }, [llmProvider, availableModels, settings.llm_model, updateSetting])
 
   const handleProviderChange = (providerValue: string) => {
-    updateSetting('llm_provider', providerValue)
-    const defaultModel = DEFAULT_LLM_MODEL[providerValue] || DEFAULT_LLM_MODEL.yandex
-    if (defaultModel) {
-      updateSetting('llm_model', defaultModel)
-    }
+    const normalizedProvider: LlmProvider = isLlmProvider(providerValue) ? providerValue : 'yandex'
+    updateSetting('llm_provider', normalizedProvider)
+    const defaultModel = DEFAULT_LLM_MODEL[normalizedProvider]
+    updateSetting('llm_model', defaultModel)
   }
 
   return (

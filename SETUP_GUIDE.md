@@ -1,213 +1,259 @@
-# Руководство по установке и запуску
+# Руководство по установке и эксплуатации
 
-## Быстрый старт
+> Этот документ описывает полный цикл развёртывания и обслуживания платформы: API, админ-панели, Telegram-бота и вспомогательных сервисов. Для краткого обзора см. `README.md`.
 
-### 1. Предварительные требования
+## Содержание
+1. [Общая архитектура](#общая-архитектура)
+2. [Предварительные требования](#предварительные-требования)
+3. [Переменные окружения](#переменные-окружения)
+4. [Подготовка окружения для разработки](#подготовка-окружения-для-разработки)
+5. [Инициализация базы данных](#инициализация-базы-данных)
+6. [Запуск сервисов локально](#запуск-сервисов-локально)
+7. [Деплой через Docker (Ubuntu Server)](#деплой-через-docker-ubuntu-server)
+8. [Обслуживание и обновления](#обслуживание-и-обновления)
+9. [Резервное копирование и восстановление](#резервное-копирование-и-восстановление)
+10. [Устранение неполадок](#устранение-неполадок)
+11. [Полезные советы](#полезные-советы)
 
-- Python 3.9 или выше
-- Telegram аккаунт
-- Telegram Bot Token (получить у @BotFather)
+## Общая архитектура
 
-### 2. Установка
+```
+┌────────────┐   HTTP (REST)   ┌────────────┐
+│  Frontend  │◄──────────────►│   FastAPI   │◄────────────┐
+│ (React/TW) │                │  (crm_api)  │             │
+└─────┬──────┘                └──────┬──────┘             │
+      │                              │                    │
+      │ WebSockets/HTTP              │ ORM                │
+      ▼                              ▼                    ▼
+┌────────────┐                ┌────────────┐       ┌────────────┐
+│ Website UI │                │   SQLite    │◄────►│  Services  │
+│ (dnk/*)    │                │  database   │      │ (LLM, etc) │
+└────────────┘                └────────────┘       └────────────┘
+      │
+      ▼
+┌────────────┐
+│ Telegram   │
+│  Bot       │
+└────────────┘
+```
+
+- **FastAPI (`crm_api/`)** — центральный API, обрабатывает CRM-логику, сайт, чат-виджет, уведомления.
+- **React-панель (`crm-frontend/`)** — админ-интерфейс для сотрудников (управление клиентами, настройками, аналитикой).
+- **Сайт (`dnk/`)** — статический фронт (не версионируется, используется как шаблон, выкатка вручную).
+- **Telegram-бот (`bot.py`)** — пользовательский touchpoint.
+- **Services (`services/`)** — вспомогательные модули: генерация программ, интеграция LLM, телеграм-уведомления и т.д.
+
+## Предварительные требования
+
+- Git, Python 3.11+, Node.js 20+ (для локальной разработки фронтенда).
+- Docker и Docker Compose (для контейнерного деплоя).
+- Telegram Bot Token и ID администратора.
+- Ключи LLM-провайдеров (YandexGPT, OpenAI/ProxyAPI) при использовании виджета.
+- Сервер на Ubuntu 20.04+ (для продакшн размещения).
+
+## Переменные окружения
+
+Используется файл `.env`. Скопируйте `.env.example` и заполните актуальными значениями.
 
 ```bash
-# Клонировать репозиторий (если он в git)
-# git clone <repo_url>
-# cd workflow
+cp .env.example .env
+nano .env
+```
 
-# Создать виртуальное окружение
-python -m venv venv
+Основные группы переменных:
 
-# Активировать окружение
-# Windows:
-venv\Scripts\activate
-# Linux/Mac:
-source venv/bin/activate
+- **База данных и общие настройки**
+  - `DATABASE_URL` — строка подключения; по умолчанию `sqlite:///data/crm.db`.
+  - `LOG_LEVEL`, `LOG_FILE` — журналирование.
+- **Telegram**
+  - `TELEGRAM_BOT_TOKEN`
+  - `ADMIN_CHAT_ID` — для уведомлений и контакт-формы сайта.
+- **LLM**
+  - `LLM_PROVIDER` (значения: `yandex`, `openai`, `proxyapi`)
+  - Ключи: `YANDEX_GPT_API_KEY`, `OPENAI_API_KEY`, `PROXYAPI_API_KEY`.
+- **Почта / интеграции (при необходимости)**
+  - Email SMTP, платежные системы и т.п. — добавляются по мере реализации.
 
-# Установить зависимости
+> Не храните `.env` в Git. Все секреты остаются на сервере.
+
+## Подготовка окружения для разработки
+
+### 1. Python backend
+```bash
+python -m venv .venv
+source .venv/bin/activate  # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
-
-# Настроить переменные окружения
-copy .env.example .env
-# Или в Linux/Mac:
-# cp .env.example .env
 ```
 
-### 3. Настройка бота
-
-Отредактируйте файл `.env` и добавьте необходимые данные:
-
-```env
-# ОБЯЗАТЕЛЬНЫЕ НАСТРОЙКИ
-
-# Telegram Bot Token (получить у @BotFather в Telegram)
-TELEGRAM_BOT_TOKEN=ваш_токен_бота
-
-# ID администратора (ваш Telegram ID)
-ADMIN_CHAT_ID=ваш_chat_id
-```
-
-Чтобы получить свой Chat ID:
-1. Напишите @userinfobot в Telegram
-2. Бот вернет ваш ID
-3. Скопируйте ID в ADMIN_CHAT_ID
-
-### 4. Инициализация базы данных
-
+### 2. Node.js frontend
 ```bash
-python setup.py
+cd crm-frontend
+npm install
 ```
 
-Эта команда создаст:
-- Базу данных (SQLite)
-- Необходимые директории
-- Проверит настройки
+### 3. Проверка зависимостей
+```bash
+python -m pip check
+npm run lint   # при наличии линтера
+```
 
-### 5. Запуск бота
+## Инициализация базы данных
 
+- **Первый запуск (SQLite)**
+  ```bash
+  python database/init_crm.py
+  ```
+  Скрипт создаёт все таблицы и директорию `data/` при необходимости.
+
+- **Миграции**
+  Используется декларативная генерация через SQLAlchemy; при изменении моделей пересоздайте таблицы или подготовьте скрипты миграции вручную (Alembic по желанию).
+
+## Запуск сервисов локально
+
+### FastAPI (CRM API)
+```bash
+python run_crm_api.py
+```
+Параметры:
+- `reload` активирован, отслеживает изменения в `crm_api/` и `database/`.
+- Логи в `logs/api.log` (создаётся автоматически).
+- CORS позволяет работать с `localhost` и `file://` (тестирование сайта).
+
+### React admin panel
+```bash
+cd crm-frontend
+npm run dev  # порт 5173
+```
+Настройте `crm-frontend/src/services/api.ts`, чтобы dev-сервер обращался к API (по умолчанию `http://localhost:8009/api`).
+
+### Telegram-бот
 ```bash
 python bot.py
 ```
+Логи бота — в `logs/bot.log`. Убедитесь, что `TELEGRAM_BOT_TOKEN` и `ADMIN_CHAT_ID` заполнены.
 
-Если все настроено правильно, вы увидите:
-```
-✅ Bot started successfully!
-```
+### Единый запуск всех сервисов
 
-## Расширенные настройки
+Чтобы одновременно поднять CRM API (FastAPI), React dev server и Telegram-бота, воспользуйтесь скриптом `run_all.py`:
 
-### Интеграция с Google Sheets
-
-**Вариант 1: Публичные таблицы (рекомендуется)**
-
-Не требует credentials.json! Просто убедитесь, что таблицы доступны для чтения:
-
-1. Откройте Google Sheets таблицу
-2. Нажмите "Настроить доступ"
-3. Выберите "Все, у кого есть ссылка" → "Читатель"
-4. Добавьте ссылки в `.env` (уже есть в примере)
-
-**Вариант 2: С credentials.json (для приватных таблиц)**
-
-Если таблицы приватные:
-
-1. Создайте проект в [Google Cloud Console](https://console.cloud.google.com)
-2. Включите Google Sheets API
-3. Создайте Service Account
-4. Скачайте credentials.json
-5. Положите файл в корень проекта
-6. Добавьте в .env:
-```env
-GOOGLE_SHEETS_CREDENTIALS=credentials.json
+```bash
+python run_all.py
 ```
 
-Система автоматически выберет способ доступа к таблицам.
+Скрипт запускает три подпроцесса, следит за их состоянием и корректно завершает их при `Ctrl+C`. Перед запуском убедитесь, что:
 
-### Интеграция с amoCRM (этап 2)
+- установлены Python-зависимости (`pip install -r requirements.txt`);
+- выполнен `npm install` в каталоге `crm-frontend`.
 
-Для интеграции с CRM:
+### Статический сайт
 
-```env
-AMOCRM_DOMAIN=ваш_домен.amocrm.ru
-AMOCRM_CLIENT_ID=ваш_client_id
-AMOCRM_CLIENT_SECRET=ваш_secret
+Папка `dnk/` исключена из Git. Для локального тестирования:
+```bash
+cd dnk
+python -m http.server 8009  # либо откройте index.html вручную (учтите CORS)
+```
+Настройте `script.js` для корректного обращения к API (локально: `http://localhost:8009/api/...`). Для продакшна обновите URL на актуальный домен.
+
+## Деплой через Docker (Ubuntu Server)
+
+### Установка Docker и Compose
+```bash
+sudo apt-get update && sudo apt-get install -y ca-certificates curl gnupg
+sudo install -m 0755 -d /etc/apt/keyrings
+curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+echo \"deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable\" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+sudo apt-get update && sudo apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+sudo usermod -aG docker $USER  # перелогиньтесь
 ```
 
-### Интеграция с платежными системами (этап 2)
+### Подготовка проекта
+```bash
+# Копирование исходников (git clone / scp / rsync)
+git clone <repo_url> /opt/fitness-crm
+cd /opt/fitness-crm
 
-Для приема платежей через Tinkoff:
-
-```env
-TINKOFF_TERMINAL_KEY=ваш_terminal_key
-TINKOFF_PASSWORD=ваш_password
+# Конфигурация окружения
+cp .env.example .env
+nano .env  # заполните значения
 ```
 
-## Проверка работы
-
-1. Найдите вашего бота в Telegram
-2. Отправьте команду `/start`
-3. Проверьте работу всех кнопок
-
-## Команды для администратора
-
-- `/stats` - показать статистику бота (только для админа)
-- `/start` - главное меню
-- `/program` - получить программу
-- `/price` - узнать цены
-- `/contacts` - контакты тренера
-- `/faq` - часто задаваемые вопросы
-
-## Структура проекта
-
+### Запуск контейнеров
+```bash
+docker compose up -d --build
+docker compose ps
 ```
-workflow/
-├── bot.py                 # Основной файл бота
-├── config.py              # Конфигурация
-├── setup.py               # Скрипт установки
-├── requirements.txt       # Зависимости Python
-├── .env                   # Переменные окружения (создать!)
-├── handlers/              # Обработчики команд
-│   ├── start.py          # Команда /start
-│   ├── questionnaire.py  # Опросник
-│   ├── payment.py        # Платежи
-│   ├── contacts.py       # Контакты
-│   ├── faq.py           # FAQ
-│   └── admin.py         # Админ-команды
-├── database/             # База данных
-│   ├── models.py        # Модели данных
-│   └── db.py           # Инициализация БД
-├── services/            # Сервисы (будущие)
-├── data/                # Данные
-└── logs/                # Логи
+
+- `crm_frontend` слушает порт 80 (Nginx + React build).
+- `crm_api` — внутренний сервис (порт 8000).
+- SQLite файлы сохраняются в volume `crm_data` (`/data/crm.db` внутри контейнера).
+
+### Проверка
+- Откройте `http://<сервер>/` — должна загрузиться админ-панель.
+- Запрос к `http://<сервер>/api/health` (если настроена точка здоровья) или выполните `docker compose logs api`.
+
+### HTTPS
+Используйте внешний reverse-proxy (Caddy, Traefik, Nginx) или Cloudflare. Проксируйте на порт 80 контейнера `crm_frontend`.
+
+## Обслуживание и обновления
+
+### Обновление приложения
+```bash
+git pull
+docker compose up -d --build
 ```
+
+### Просмотр логов
+```bash
+docker compose logs -f api      # логи API
+docker compose logs -f frontend # логи Nginx/React
+```
+
+### Перезапуск сервисов
+```bash
+docker compose restart api
+docker compose restart frontend
+```
+
+### Остановка
+```bash
+docker compose down
+# docker compose down -v   # с удалением volumes (аккуратно!)
+```
+
+## Резервное копирование и восстановление
+
+### База данных (SQLite)
+```bash
+CONTAINER_ID=$(docker compose ps -q api)
+docker cp ${CONTAINER_ID}:/data/crm.db ./backup_crm_$(date +%F).db
+```
+
+Для восстановления скопируйте файл обратно в `/data/crm.db` контейнера или volume, затем перезапустите сервис.
+
+### Логи
+Volume `crm_logs` содержит файлы журналов. Копируйте по аналогии с БД или используйте `docker cp`.
 
 ## Устранение неполадок
 
-### Ошибка: "TELEGRAM_BOT_TOKEN is required"
+| Симптом | Возможная причина | Решение |
+|---------|-------------------|---------|
+| `ModuleNotFoundError: email_validator` | Зависимость не установлена | `pip install -r requirements.txt` (в контейнере или локально) |
+| `sqlite3.OperationalError` | Нет прав на запись в volume | Проверьте права на хосте, убедитесь что volume создан |
+| CORS ошибки при открытии `index.html` локально | `file://` origin | Запускайте локальный web-сервер или убедитесь, что `crm_api` разрешает `null` origin (уже настроено) |
+| `sqlalchemy.exc.NoReferencedTableError` | Не импортированы модели при создании БД | Убедитесь, что `database/db.py` импортирует все модели перед `Base.metadata.create_all()` (исправлено) |
+| Нет ответа Telegram-бота | Неверный токен или бот не запущен | Проверьте `.env`, логи `bot.log`, перезапустите бота |
+| Виджет чата показывает неправильную модель LLM | Конфигурация не синхронизирована | Обновите настройки в панели (`Настройки сайта → Виджет чата`), сохраните |
 
-Убедитесь, что вы:
-1. Создали файл `.env`
-2. Добавили токен бота
-3. Правильно указали путь к файлу
+## Полезные советы
 
-### Ошибка: "Module not found"
+- `dnk/` находится вне Git — храните актуальный билд сайта отдельно, деплойте вручную.
+- При изменении моделей в `database/models.py` убедитесь, что связанные сервисы обновлены (например, удаление клиентов учитывает все внешние ключи).
+- Настройки сайта (`/website-settings`) позволяют обновлять промпт, цвета, контент без правок кода.
+- Для разработки LLM-логики используйте тестовые ключи и ограничьте токены через настройки виджета.
 
-Установите зависимости:
-```bash
-pip install -r requirements.txt
-```
+---
 
-### Бот не отвечает
-
-1. Проверьте, что бот запущен
-2. Проверьте логи в `logs/bot.log`
-3. Убедитесь, что токен правильный
-
-### Проблемы с базой данных
-
-Удалите базу и создайте заново:
-```bash
-rm bot.db
-python setup.py
-```
-
-## Дальнейшие шаги
-
-После успешного запуска MVP:
-
-1. ✅ Протестировать бота на первых клиентах
-2. ✅ Настроить Google Sheets для хранения данных
-3. ✅ Добавить интеграцию с amoCRM
-4. ✅ Настроить платежную систему
-5. ✅ Добавить AI-агента для ответов на вопросы
-6. ✅ Реализовать автоматическую генерацию программ
-
-## Поддержка
-
-При возникновении проблем:
-- Проверьте логи в `logs/bot.log`
-- Обратитесь к тренеру: @DandK_FitBody
-- Создайте issue в репозитории (если проект в Git)
+Для вопросов по бизнес-логике см. `docs/ADMIN_GUIDE.md`. Для взаимодействия с интерфейсами клиентов см. `docs/USER_GUIDE.md`.
 
 ## Деплой через Docker (Ubuntu Server)
 

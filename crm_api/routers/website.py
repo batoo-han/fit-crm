@@ -12,6 +12,9 @@ from config import TELEGRAM_BOT_TOKEN, ADMIN_CHAT_ID
 from aiogram import Bot
 from aiogram.exceptions import TelegramBadRequest
 import re
+from services.pipeline_service import PipelineAutomation
+
+INITIAL_FOLLOW_UP_HOURS = 12
 
 router = APIRouter()
 
@@ -200,23 +203,24 @@ async def submit_contact_form(form_data: ContactFormRequest):
             db.commit()
             logger.info(f"Found existing client: {client.id} - {form_data.name}")
         
+        automation = PipelineAutomation(db)
+        if not is_new_client and not client.pipeline_stage_id:
+            automation.move_client_to_stage_by_name(
+                client=client,
+                stage_name="Первичный контакт",
+                notes="Автоматически добавлен в первичный этап после заявки с сайта",
+            )
+        
         # Если новый клиент - перемещаем в воронку на этап "Первичный контакт"
         if is_new_client:
-            primary_stage = get_primary_contact_stage(db)
-            if primary_stage:
-                client.pipeline_stage_id = primary_stage.id
-                
-                # Создаем запись в истории воронки
-                pipeline_entry = ClientPipeline(
-                    client_id=client.id,
-                    stage_id=primary_stage.id,
-                    moved_by=None,  # Система
-                    notes=f"Автоматически добавлен из формы обратной связи на сайте",
-                    moved_at=datetime.utcnow()
-                )
-                db.add(pipeline_entry)
-                db.commit()
-                logger.info(f"Moved client {client.id} to pipeline stage '{primary_stage.name}'")
+            moved = automation.move_client_to_stage_by_name(
+                client=client,
+                stage_name="Первичный контакт",
+                notes="Автоматически добавлен из формы обратной связи на сайте",
+            )
+            if moved:
+                db.flush()
+                logger.info(f"Moved client {client.id} to pipeline stage 'Первичный контакт'")
         
         # Создаем действие (ClientAction)
         action_description = f"Заявка с сайта"
@@ -251,6 +255,14 @@ async def submit_contact_form(form_data: ContactFormRequest):
         )
         db.add(contact_entry)
         
+        # Обновляем сроки контактов и напоминания
+        automation.handle_action_created(
+            client=client,
+            action=action,
+            created_by=None,
+            follow_up_hours_override=INITIAL_FOLLOW_UP_HOURS,
+        )
+
         db.commit()
         logger.info(f"Created action and contact for client {client.id}")
         
