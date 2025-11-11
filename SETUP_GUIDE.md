@@ -155,45 +155,234 @@ python -m http.server 8009  # либо откройте index.html вручну�
 ```
 Настройте `script.js` для корректного обращения к API (локально: `http://localhost:8009/api/...`). Для продакшна обновите URL на актуальный домен.
 
-## Деплой через Docker (Ubuntu Server)
+## Деплой через Docker (Ubuntu Server 24.04)
 
-### Установка Docker и Compose
+### Подготовка сервера
+
+#### 1. Установка Docker и Docker Compose
 ```bash
-sudo apt-get update && sudo apt-get install -y ca-certificates curl gnupg
+# Обновление системы
+sudo apt-get update && sudo apt-get upgrade -y
+
+# Установка Docker
+sudo apt-get install -y ca-certificates curl gnupg
 sudo install -m 0755 -d /etc/apt/keyrings
 curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg
-echo \"deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable\" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
 sudo apt-get update && sudo apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
-sudo usermod -aG docker $USER  # перелогиньтесь
+
+# Добавление пользователя в группу docker
+sudo usermod -aG docker $USER
+# Перелогиньтесь или выполните: newgrp docker
 ```
 
-### Подготовка проекта
+#### 2. Установка Nginx
 ```bash
-# Копирование исходников (git clone / scp / rsync)
-git clone <repo_url> /opt/fitness-crm
+sudo apt-get install -y nginx
+sudo systemctl enable nginx
+sudo systemctl start nginx
+```
+
+#### 3. Установка Certbot (для SSL сертификатов)
+```bash
+sudo apt-get install -y certbot python3-certbot-nginx
+```
+
+### Развертывание приложения
+
+#### 1. Клонирование репозитория
+```bash
+# Создаем директорию для приложения
+sudo mkdir -p /opt/fitness-crm
+sudo chown $USER:$USER /opt/fitness-crm
+
+# Клонируем репозиторий (замените на ваш репозиторий)
+git clone <your_repo_url> /opt/fitness-crm
+cd /opt/fitness-crm
+```
+
+#### 2. Настройка окружения
+```bash
+# Копируем пример конфигурации
+cp .env.example .env
+
+# Редактируем конфигурацию
+nano .env
+```
+
+**Важные настройки для production:**
+- `ENVIRONMENT=production`
+- `DATABASE_URL=sqlite:////data/crm.db`
+- `SITE_URL=https://www.batoohan.ru`
+- Все токены и ключи (Telegram, YooKassa/Tinkoff, LLM провайдеры)
+- `ADMIN_USERNAME` и `ADMIN_PASSWORD` (обязательно измените!)
+
+#### 3. Подготовка директории для статического сайта
+```bash
+# Создаем директорию для статического сайта (dnk/)
+sudo mkdir -p /var/www/batoohan.ru
+sudo chown $USER:$USER /var/www/batoohan.ru
+
+# Копируем файлы сайта (папка dnk/)
+# ВАЖНО: Папка dnk/ не в Git, скопируйте её вручную на сервер
+# Например, через scp или rsync:
+# scp -r dnk/* user@server:/var/www/batoohan.ru/
+```
+
+#### 4. Настройка Nginx
+
+Создаем конфигурацию для сайта:
+```bash
+sudo nano /etc/nginx/sites-available/batoohan.ru
+```
+
+Скопируйте содержимое из `nginx/nginx.production.conf` и вставьте в файл.
+
+**ВАЖНО**: Обновите пути к SSL сертификатам после их получения через Certbot.
+
+Активируем конфигурацию:
+```bash
+# Создаем симлинк
+sudo ln -s /etc/nginx/sites-available/batoohan.ru /etc/nginx/sites-enabled/
+
+# Удаляем дефолтную конфигурацию (опционально)
+sudo rm /etc/nginx/sites-enabled/default
+
+# Проверяем конфигурацию
+sudo nginx -t
+
+# Перезагружаем nginx
+sudo systemctl reload nginx
+```
+
+#### 5. Получение SSL сертификата
+```bash
+# Получаем сертификат через Certbot
+sudo certbot --nginx -d batoohan.ru -d www.batoohan.ru
+
+# Certbot автоматически обновит конфигурацию nginx
+# Проверяем автообновление сертификата
+sudo certbot renew --dry-run
+```
+
+#### 6. Запуск Docker контейнеров
+```bash
 cd /opt/fitness-crm
 
-# Конфигурация окружения
-cp .env.example .env
-nano .env  # заполните значения
+# Используем production конфигурацию
+docker compose -f docker-compose.production.yml up -d --build
+
+# Проверяем статус
+docker compose -f docker-compose.production.yml ps
+
+# Просматриваем логи
+docker compose -f docker-compose.production.yml logs -f
 ```
 
-### Запуск контейнеров
+#### 7. Настройка файрвола (если используется)
 ```bash
-docker compose up -d --build
-docker compose ps
+# Разрешаем HTTP и HTTPS
+sudo ufw allow 'Nginx Full'
+sudo ufw allow ssh
+sudo ufw enable
 ```
 
-- `crm_frontend` слушает порт 80 (Nginx + React build).
-- `crm_api` — внутренний сервис (порт 8000).
-- SQLite файлы сохраняются в volume `crm_data` (`/data/crm.db` внутри контейнера).
+### Проверка развертывания
 
-### Проверка
-- Откройте `http://<сервер>/` — должна загрузиться админ-панель.
-- Запрос к `http://<сервер>/api/health` (если настроена точка здоровья) или выполните `docker compose logs api`.
+1. **Проверка сайта**: Откройте https://www.batoohan.ru — должен загрузиться статический сайт
+2. **Проверка API**: Откройте https://www.batoohan.ru/api/health (если настроена) или проверьте логи:
+   ```bash
+   docker compose -f docker-compose.production.yml logs api
+   ```
+3. **Проверка админ-панели**: Откройте https://www.batoohan.ru/admin/ — должна загрузиться админ-панель
+4. **Проверка загрузок**: Убедитесь, что директория `/opt/fitness-crm/uploads` существует и доступна для записи
 
-### HTTPS
-Используйте внешний reverse-proxy (Caddy, Traefik, Nginx) или Cloudflare. Проксируйте на порт 80 контейнера `crm_frontend`.
+### Обслуживание
+
+#### Обновление приложения
+```bash
+cd /opt/fitness-crm
+
+# Получаем обновления
+git pull
+
+# Пересобираем и перезапускаем контейнеры
+docker compose -f docker-compose.production.yml up -d --build
+
+# Проверяем логи
+docker compose -f docker-compose.production.yml logs -f
+```
+
+#### Резервное копирование
+```bash
+# Создаем директорию для бэкапов
+mkdir -p ~/backups/fitness-crm
+
+# Бэкап базы данных
+docker compose -f docker-compose.production.yml exec api cp /data/crm.db /tmp/crm.db
+docker compose -f docker-compose.production.yml cp api:/tmp/crm.db ~/backups/fitness-crm/crm_$(date +%Y%m%d_%H%M%S).db
+
+# Бэкап загрузок
+tar -czf ~/backups/fitness-crm/uploads_$(date +%Y%m%d_%H%M%S).tar.gz uploads/
+
+# Бэкап статического сайта
+tar -czf ~/backups/fitness-crm/site_$(date +%Y%m%d_%H%M%S).tar.gz /var/www/batoohan.ru/
+```
+
+#### Мониторинг
+```bash
+# Просмотр логов
+docker compose -f docker-compose.production.yml logs -f api
+docker compose -f docker-compose.production.yml logs -f frontend
+
+# Статус контейнеров
+docker compose -f docker-compose.production.yml ps
+
+# Использование ресурсов
+docker stats
+
+# Логи nginx
+sudo tail -f /var/log/nginx/batoohan.ru.access.log
+sudo tail -f /var/log/nginx/batoohan.ru.error.log
+```
+
+### Устранение неполадок
+
+#### Контейнеры не запускаются
+```bash
+# Проверяем логи
+docker compose -f docker-compose.production.yml logs
+
+# Проверяем конфигурацию
+docker compose -f docker-compose.production.yml config
+
+# Пересобираем без кэша
+docker compose -f docker-compose.production.yml build --no-cache
+```
+
+#### Nginx не проксирует запросы
+```bash
+# Проверяем конфигурацию nginx
+sudo nginx -t
+
+# Проверяем, что контейнеры работают
+docker compose -f docker-compose.production.yml ps
+
+# Проверяем, что порты открыты
+sudo netstat -tulpn | grep -E '8000|8080'
+
+# Проверяем логи nginx
+sudo tail -f /var/log/nginx/batoohan.ru.error.log
+```
+
+#### Проблемы с SSL сертификатом
+```bash
+# Обновляем сертификат вручную
+sudo certbot renew
+
+# Проверяем статус сертификата
+sudo certbot certificates
+```
 
 ## Обслуживание и обновления
 

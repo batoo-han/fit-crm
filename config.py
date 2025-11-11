@@ -14,6 +14,11 @@ TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 if not TELEGRAM_BOT_TOKEN:
     raise ValueError("TELEGRAM_BOT_TOKEN is required")
 TELEGRAM_BOT_USERNAME = os.getenv("TELEGRAM_BOT_USERNAME")
+TELEGRAM_CHANNEL_ID = os.getenv("TELEGRAM_CHANNEL_ID")  # optional for social posts
+
+# Social networks
+VK_ACCESS_TOKEN = os.getenv("VK_ACCESS_TOKEN")
+VK_GROUP_ID = os.getenv("VK_GROUP_ID")  # numeric ID or screen name, e.g. -123456789 for community
 
 # Database Configuration
 DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///bot.db")
@@ -44,6 +49,17 @@ AMOCRM_CLIENT_SECRET = os.getenv("AMOCRM_CLIENT_SECRET")
 YOOKASSA_SHOP_ID = os.getenv("YOOKASSA_SHOP_ID")
 YOOKASSA_SECRET_KEY = os.getenv("YOOKASSA_SECRET_KEY")
 YOOKASSA_RETURN_URL = os.getenv("YOOKASSA_RETURN_URL", "https://www.batoohan.ru/pay/return")
+
+# Tinkoff (optional, used when selected as active provider)
+TINKOFF_TERMINAL_KEY = os.getenv("TINKOFF_TERMINAL_KEY")
+TINKOFF_SECRET_KEY = os.getenv("TINKOFF_SECRET_KEY")
+TINKOFF_RETURN_URL = os.getenv("TINKOFF_RETURN_URL", "https://www.batoohan.ru/pay/return")
+# amoCRM optional integration
+AMOCRM_ENABLED = os.getenv("AMOCRM_ENABLED", "false").lower() in ("1", "true", "yes")
+AMOCRM_DOMAIN = os.getenv("AMOCRM_DOMAIN")  # e.g., example.amocrm.ru
+AMOCRM_CLIENT_ID = os.getenv("AMOCRM_CLIENT_ID")
+AMOCRM_CLIENT_SECRET = os.getenv("AMOCRM_CLIENT_SECRET")
+AMOCRM_REDIRECT_URI = os.getenv("AMOCRM_REDIRECT_URI")
 
 # Trainer Information
 TRAINER_NAME = os.getenv("TRAINER_NAME", "Данила Цыганков")

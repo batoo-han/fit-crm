@@ -1,0 +1,68 @@
+version: "3.9"
+
+# Production конфигурация для развертывания на сервере batoohan.ru
+# Используется вместе с nginx на хосте для проксирования запросов
+
+services:
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile.api
+    container_name: crm_api_prod
+    env_file:
+      - .env
+    environment:
+      # База данных в монтированном томе
+      - DATABASE_URL=sqlite:////data/crm.db
+      - LOG_LEVEL=INFO
+      - ENVIRONMENT=production
+    volumes:
+      - crm_data:/data
+      - crm_logs:/app/logs
+      - ./uploads:/app/uploads  # Загрузки должны быть доступны через nginx
+    networks:
+      - app_net
+    restart: unless-stopped
+    # Не пробрасываем порты наружу - nginx будет проксировать через внутреннюю сеть
+    expose:
+      - "8000"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import socket; s=socket.socket(); s.settimeout(3); s.connect(('127.0.0.1', 8000)); s.close()"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 40s
+
+  frontend:
+    build:
+      context: .
+      dockerfile: crm-frontend/Dockerfile
+      args:
+        # Устанавливаем базовый путь /admin/ для React приложения
+        VITE_BASE_PATH: /admin/
+    container_name: crm_frontend_prod
+    depends_on:
+      - api
+    networks:
+      - app_net
+    restart: unless-stopped
+    # Пробрасываем на локальный порт 8080 для nginx
+    ports:
+      - "127.0.0.1:8080:80"
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "-", "http://127.0.0.1/admin/"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 40s
+
+volumes:
+  crm_data:
+    driver: local
+  crm_logs:
+    driver: local
+
+networks:
+  app_net:
+    driver: bridge
+

@@ -9,7 +9,7 @@ from loguru import logger
 from sqlalchemy.orm import Session
 
 from database.models import Client
-from database.models_crm import PipelineStage, ClientPipeline, ActionType
+from database.models_crm import PipelineStage, ClientPipeline, ActionType, SalesPipeline
 
 
 STATUS_BY_STAGE: Dict[str, str] = {
@@ -153,12 +153,18 @@ class PipelineAutomation:
                 )
                 return False
 
+        # Enforce exclusivity: only one active pipeline per client at a time.
+        # Determine pipeline_id of stage (None means Default/global).
+        target_pipeline_id = getattr(target_stage, "pipeline_id", None)
+
+        # Update client current stage
         client.pipeline_stage_id = target_stage.id
         self._update_client_status_for_stage(client, target_stage)
 
         pipeline_entry = ClientPipeline(
             client_id=client.id,
             stage_id=target_stage.id,
+            pipeline_id=target_pipeline_id,
             moved_by=moved_by,
             notes=notes,
             moved_at=datetime.utcnow(),

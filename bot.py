@@ -5,7 +5,7 @@ from aiogram.fsm.storage.memory import MemoryStorage
 from aiogram.types import BotCommand
 from loguru import logger
 from config import TELEGRAM_BOT_TOKEN, LOG_LEVEL
-from handlers import start, questionnaire, payment, contacts, faq, admin, admin_payment, my_programs, progress_journal
+from handlers import start, questionnaire, payment, contacts, faq, admin, admin_payment, my_programs, progress_journal, recommendations
 
 # Configure logging
 logger.add("logs/bot.log", rotation="10 MB", level=LOG_LEVEL)
@@ -109,6 +109,7 @@ async def main():
     dp.include_router(payment.router)
     dp.include_router(contacts.router)
     dp.include_router(faq.router)
+    dp.include_router(recommendations.router)
     dp.include_router(my_programs.router)
     dp.include_router(progress_journal.router)
     dp.include_router(admin.router)
@@ -123,6 +124,7 @@ async def main():
         BotCommand(command="price", description="Узнать цены"),
         BotCommand(command="contacts", description="Контакты тренера"),
         BotCommand(command="faq", description="Часто задаваемые вопросы"),
+        BotCommand(command="recommend", description="Персональные рекомендации"),
     ]
     await bot.set_my_commands(commands)
 
@@ -134,6 +136,38 @@ async def main():
     # Start payment status checking task
     asyncio.create_task(check_payments_periodically())
     
+    # Start marketing scheduled processing every 15 minutes
+    async def process_marketing_periodically():
+        from database.db import get_db_session
+        from services.marketing_service import MarketingService
+        while True:
+            try:
+                await asyncio.sleep(15 * 60)
+                db = get_db_session()
+                started = MarketingService.process_scheduled(db, limit_per_run=200, max_runs=3)
+                logger.info(f"Marketing scheduled runs started: {started}")
+                db.close()
+            except Exception as e:
+                logger.error(f"Marketing periodic error: {e}")
+
+    asyncio.create_task(process_marketing_periodically())
+
+    async def process_social_posts_periodically():
+        from database.db import get_db_session
+        from services.social_scheduler import SocialScheduler
+        while True:
+            try:
+                await asyncio.sleep(10 * 60)
+                db = get_db_session()
+                processed = SocialScheduler.process_scheduled(db, limit=5)
+                if processed:
+                    logger.info(f"Social posts processed: {processed}")
+                db.close()
+            except Exception as e:
+                logger.error(f"Social posts periodic error: {e}")
+
+    asyncio.create_task(process_social_posts_periodically())
+
     # Start polling
     await dp.start_polling(bot)
 

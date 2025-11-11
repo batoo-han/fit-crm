@@ -19,6 +19,7 @@ class PipelineStageResponse(BaseModel):
     color: str
     description: str | None
     is_active: bool
+    pipeline_id: int | None = None
 
     class Config:
         from_attributes = True
@@ -70,7 +71,7 @@ async def update_pipeline_stage(
         raise HTTPException(status_code=404, detail="Pipeline stage not found")
     
     # Update allowed fields
-    allowed_fields = ["name", "order", "color", "description", "is_active"]
+    allowed_fields = ["name", "order", "color", "description", "is_active", "pipeline_id"]
     for field, value in stage_data.items():
         if field in allowed_fields and hasattr(stage, field):
             setattr(stage, field, value)

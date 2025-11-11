@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 from database.db import get_db_session
 from database.models import WebsiteSettings
 from services.ai_service import ai_service
+from services.faq_service import FAQService
 from loguru import logger
 import json
 from typing import Optional, List, Dict, Any
@@ -210,6 +211,20 @@ async def chat_with_llm(message: ChatMessage):
         # Получаем настройки виджета
         widget_settings = get_widget_settings(db)
         
+        # Сначала пытаемся найти ответ в FAQ
+        faq_answer = await FAQService.get_ai_answer(db, message.message)
+        
+        if faq_answer:
+            # Если найден ответ в FAQ, используем его
+            logger.info(f"FAQ answer found for query: {message.message[:50]}...")
+            session_id = message.session_id or str(uuid.uuid4())
+            return ChatResponse(
+                response=faq_answer,
+                session_id=session_id,
+                completed=False
+            )
+        
+        # Если FAQ не помог, используем обычный AI-агент
         # Получаем системный промпт
         system_prompt = build_system_prompt(widget_settings)
         

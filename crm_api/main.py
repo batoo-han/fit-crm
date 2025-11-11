@@ -12,11 +12,12 @@ from contextlib import asynccontextmanager
 from loguru import logger
 import uvicorn
 import os
+from fastapi.staticfiles import StaticFiles
 
 # Создаём директорию для логов, если её нет
 os.makedirs("logs", exist_ok=True)
 
-from crm_api.routers import auth, clients, pipeline, programs, progress, actions, contacts, analytics, website, website_chat, website_settings, reminders, payments
+from crm_api.routers import auth, clients, pipeline, programs, progress, actions, contacts, analytics, website, website_chat, website_settings, reminders, payments, faq, sales_scenarios, uploads, pipelines, marketing, integrations_amocrm, social_posts, promocodes
 from database.init_crm import init_crm
 
 
@@ -133,6 +134,10 @@ app.add_middleware(
     expose_headers=["*"],
 )
 
+# Static files (uploads)
+os.makedirs("uploads", exist_ok=True)
+app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
+
 # Include routers
 app.include_router(auth.router, prefix="/api/auth", tags=["auth"])
 app.include_router(clients.router, prefix="/api/clients", tags=["clients"])
@@ -147,6 +152,14 @@ app.include_router(website_chat.router, prefix="/api/website", tags=["website-ch
 app.include_router(website_settings.router, prefix="/api/website", tags=["website-settings"])
 app.include_router(reminders.router, prefix="/api/reminders", tags=["reminders"])
 app.include_router(payments.router, prefix="/api/payments", tags=["payments"])
+app.include_router(faq.router, prefix="/api/faq", tags=["faq"])
+app.include_router(sales_scenarios.router, prefix="/api/sales-scenarios", tags=["sales-scenarios"])
+app.include_router(uploads.router, prefix="/api/uploads", tags=["uploads"])
+app.include_router(pipelines.router, prefix="/api/pipelines", tags=["pipelines"])
+app.include_router(marketing.router, prefix="/api/marketing", tags=["marketing"])
+app.include_router(integrations_amocrm.router, prefix="/api/integrations/amocrm", tags=["integrations-amocrm"])
+app.include_router(social_posts.router, prefix="/api/social-posts", tags=["social-posts"])
+app.include_router(promocodes.router, prefix="/api/promocodes", tags=["promocodes"])
 
 
 @app.get("/")

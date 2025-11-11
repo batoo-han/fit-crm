@@ -12,6 +12,11 @@ import ProgramView from './pages/ProgramView'
 import Progress from './pages/Progress'
 import Analytics from './pages/Analytics'
 import WebsiteSettings from './pages/WebsiteSettings'
+import Pipelines from './pages/Pipelines'
+import AIAgentSettings from './pages/AIAgentSettings'
+import Marketing from './pages/Marketing'
+import Integrations from './pages/Integrations'
+import SocialPosts from './pages/SocialPosts'
 import Layout from './components/Layout'
 import ProtectedRoute from './components/ProtectedRoute'
 import ScrollToTop from './components/ScrollToTop'
@@ -26,10 +31,14 @@ const queryClient = new QueryClient({
 })
 
 function App() {
+  // Базовый путь из конфигурации Vite (автоматически устанавливается из base в vite.config.ts)
+  // Для production: /admin/, для development: /
+  const basename = import.meta.env.BASE_URL || '/'
+  
   return (
     <QueryClientProvider client={queryClient}>
       <AuthProvider>
-        <BrowserRouter>
+        <BrowserRouter basename={basename}>
           <ScrollToTop />
           <Routes>
             <Route path="/login" element={<Login />} />
@@ -52,6 +61,11 @@ function App() {
               <Route path="progress/:clientId" element={<Progress />} />
               <Route path="analytics" element={<Analytics />} />
               <Route path="website-settings" element={<WebsiteSettings />} />
+              <Route path="pipelines" element={<Pipelines />} />
+              <Route path="marketing" element={<Marketing />} />
+              <Route path="social-posts" element={<SocialPosts />} />
+              <Route path="integrations" element={<Integrations />} />
+              <Route path="ai-agent" element={<AIAgentSettings />} />
             </Route>
           </Routes>
         </BrowserRouter>

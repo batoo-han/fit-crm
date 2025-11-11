@@ -56,7 +56,7 @@ class ProgramStorage:
                 program_type=program_type,
                 program_data=json.dumps(program_data, ensure_ascii=False),
                 formatted_program=formatted_program,
-                is_paid=(program_type in ["paid_monthly", "paid_3month"]),
+                is_paid=(program_type in ["paid_monthly", "paid_3month", "paid_offline"]),
                 assigned_at=datetime.utcnow()
             )
             db.add(program)

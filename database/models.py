@@ -16,6 +16,7 @@ class Client(Base):
     telegram_username = Column(String(255), nullable=True)
     first_name = Column(String(100), nullable=True)
     last_name = Column(String(100), nullable=True)
+    email = Column(String(255), nullable=True)
     phone_number = Column(String(20), nullable=True)
     gender = Column(String(20), nullable=True)  # мужской, женский
     age = Column(Integer, nullable=True)
@@ -72,6 +73,17 @@ class TrainingProgram(Base):
     progress_entries = relationship("ProgressJournal", back_populates="program", foreign_keys="[ProgressJournal.program_id]")
 
 
+class ProgramVersion(Base):
+    """Snapshot of a training program for versioning and restore."""
+    __tablename__ = "program_versions"
+
+    id = Column(Integer, primary_key=True)
+    program_id = Column(Integer, ForeignKey("training_programs.id"), nullable=False, index=True)
+    program_data = Column(Text, nullable=True)  # JSON string snapshot
+    formatted_program = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    created_by = Column(Integer, ForeignKey("users.id"), nullable=True)
+
 class Payment(Base):
     """Payment model - stores payment transactions."""
     __tablename__ = "payments"
@@ -84,11 +96,26 @@ class Payment(Base):
     status = Column(String(50), default="pending")  # pending, completed, failed
     payment_method = Column(String(50))  # tinkoff, manual
     payment_id = Column(String(255), nullable=True)  # External payment ID
+    promo_code = Column(String(100), nullable=True)
+    discount_amount = Column(Float, nullable=True)
+    final_amount = Column(Float, nullable=True)
+    payment_metadata = Column(Text, nullable=True)  # JSON metadata (promo details, provider data, etc.)
     created_at = Column(DateTime, default=datetime.utcnow)
     completed_at = Column(DateTime, nullable=True)
 
     # Relationships
     client = relationship("Client", back_populates="payments")
+
+
+class PaymentWebhookLog(Base):
+    """Stores recent webhook notifications from payment providers."""
+    __tablename__ = "payment_webhook_logs"
+
+    id = Column(Integer, primary_key=True)
+    provider = Column(String(50), nullable=False)  # yookassa | tinkoff
+    event = Column(String(100), nullable=True)     # event name or status
+    raw_payload = Column(Text, nullable=True)      # full JSON string
+    created_at = Column(DateTime, default=datetime.utcnow)
 
 
 class Lead(Base):

@@ -64,6 +64,22 @@ const ClientDetail = () => {
     },
   })
 
+  // Channel preferences
+  const { data: prefs } = useQuery({
+    queryKey: ['client-prefs', id],
+    queryFn: async () => {
+      const res = await api.get(`/marketing/preferences/${id}`)
+      return res.data as { allow_telegram: boolean; allow_email: boolean; quiet_hours_start?: number | null; quiet_hours_end?: number | null }
+    },
+  })
+
+  const prefsMutation = useMutation({
+    mutationFn: async (payload: any) => {
+      const res = await api.put(`/marketing/preferences/${id}`, payload)
+      return res.data
+    },
+  })
+
   // Локальный выбор этапа с явным сохранением
   const [pendingStageId, setPendingStageId] = useState<number | ''>('')
   const [initialStageId, setInitialStageId] = useState<number | ''>('')
@@ -120,6 +136,23 @@ const ClientDetail = () => {
     },
   })
 
+  const autoGenerateMutation = useMutation({
+    mutationFn: async (params: { weeks?: number; location?: string }) => {
+      const response = await api.post('/programs/auto-generate', {
+        client_id: parseInt(id!),
+        weeks: params.weeks,
+        location: params.location,
+      })
+      return response.data as { program_id: number }
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['client-programs', id] })
+      if (data?.program_id) {
+        navigate(`/programs/${data.program_id}`)
+      }
+    },
+  })
+
   const handleSave = () => {
     updateMutation.mutate(formData)
   }
@@ -173,6 +206,19 @@ const ClientDetail = () => {
                 className="px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700"
               >
                 Редактировать
+              </button>
+              <button
+                onClick={() => {
+                  const weeksStr = prompt('Сколько недель сгенерировать? (по умолчанию 4)', '4') || '4'
+                  const weeks = parseInt(weeksStr) || 4
+                  const location = prompt('Где тренируется клиент? (дом/зал/улица)', client?.location || 'дом') || undefined
+                  autoGenerateMutation.mutate({ weeks, location })
+                }}
+                disabled={autoGenerateMutation.isPending}
+                className="px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 disabled:opacity-50"
+                title="Автоматически сгенерировать полную персональную программу"
+              >
+                {autoGenerateMutation.isPending ? 'Генерация…' : 'Сгенерировать полную программу'}
               </button>
               <button
                 onClick={() => {
@@ -374,6 +420,57 @@ const ClientDetail = () => {
         {/* Боковая панель */}
         <div className="space-y-6">
           <div className="bg-white rounded-lg shadow p-6">
+            <h2 className="text-xl font-bold text-gray-900 mb-4">Каналы связи (маркетинг)</h2>
+            <div className="space-y-3 text-sm">
+              <div className="flex items-center justify-between">
+                <span className="text-gray-700">Разрешить Telegram</span>
+                <input
+                  type="checkbox"
+                  checked={prefs?.allow_telegram ?? true}
+                  onChange={(e) => prefsMutation.mutate({ allow_telegram: e.target.checked })}
+                />
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-gray-700">Разрешить Email</span>
+                <input
+                  type="checkbox"
+                  checked={prefs?.allow_email ?? true}
+                  onChange={(e) => prefsMutation.mutate({ allow_email: e.target.checked })}
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-gray-700 mb-1">Тихие часы: с</label>
+                  <input
+                    type="number"
+                    min={0}
+                    max={23}
+                    value={prefs?.quiet_hours_start ?? ''}
+                    onChange={(e) => {
+                      const v = e.target.value === '' ? null : Math.max(0, Math.min(23, parseInt(e.target.value)))
+                      prefsMutation.mutate({ quiet_hours_start: v })
+                    }}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                  />
+                </div>
+                <div>
+                  <label className="block text-gray-700 mb-1">до</label>
+                  <input
+                    type="number"
+                    min={0}
+                    max={23}
+                    value={prefs?.quiet_hours_end ?? ''}
+                    onChange={(e) => {
+                      const v = e.target.value === '' ? null : Math.max(0, Math.min(23, parseInt(e.target.value)))
+                      prefsMutation.mutate({ quiet_hours_end: v })
+                    }}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                  />
+                </div>
+              </div>
+            </div>
+          </div>
+          <div className="bg-white rounded-lg shadow p-6">
             <h2 className="text-xl font-bold text-gray-900 mb-4">Воронка продаж</h2>
             <div className="mb-4">
               <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -476,6 +573,27 @@ const ClientDetail = () => {
             <span className="inline-block px-3 py-1 bg-green-100 text-green-800 rounded-full text-sm font-medium">
               {client.status}
             </span>
+          </div>
+
+          <div className="bg-white rounded-lg shadow p-6">
+            <h2 className="text-xl font-bold text-gray-900 mb-4">amoCRM</h2>
+            <p className="text-sm text-gray-600 mb-3">
+              Выгрузить клиента в amoCRM (если интеграция включена и настроена).
+            </p>
+            <button
+              onClick={async () => {
+                try {
+                  const res = await api.post('/integrations/amocrm/push-client', { client_id: Number(id) })
+                  const cid = res.data?.contact_id
+                  alert(cid ? `Клиент выгружен в amoCRM. ID контакта: ${cid}` : 'Клиент выгружен в amoCRM (если интеграция включена).')
+                } catch (e: any) {
+                  alert('Не удалось выгрузить клиента: ' + (e?.response?.data?.detail || 'ошибка'))
+                }
+              }}
+              className="px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700"
+            >
+              Выгрузить в amoCRM
+            </button>
           </div>
 
           <div className="bg-white rounded-lg shadow p-6">

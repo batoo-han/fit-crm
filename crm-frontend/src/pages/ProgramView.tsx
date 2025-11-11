@@ -1,7 +1,7 @@
 import { useParams } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api } from '../services/api'
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import EditableTable from '../components/EditableTable'
 import React from 'react'
 
@@ -21,6 +21,7 @@ const ProgramView = () => {
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved'>('idle')
   const [localProgramData, setLocalProgramData] = useState<any>(null)
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false)
+  const [versions, setVersions] = useState<Array<{ id: number; created_at?: string; created_by?: number }>>([])
 
   const updateMutation = useMutation({
     mutationFn: async (programData: any) => {
@@ -43,9 +44,40 @@ const ProgramView = () => {
   // Инициализируем локальные данные при загрузке программы
   React.useEffect(() => {
     if (program?.program_data && !localProgramData) {
-      setLocalProgramData(JSON.parse(JSON.stringify(program.program_data)))
+      const cloned = JSON.parse(JSON.stringify(program.program_data))
+      setLocalProgramData(cloned)
+      if (cloned?.weeks) {
+        const firstWeek = Object.keys(cloned.weeks)
+          .map(Number)
+          .sort((a, b) => a - b)[0]
+        if (firstWeek) {
+          setSelectedWeek(firstWeek)
+        }
+      }
     }
-  }, [program?.program_data])
+  }, [program?.program_data, localProgramData])
+
+  // Warn user if there are unsaved changes when leaving the page
+  useEffect(() => {
+    const handler = (e: BeforeUnloadEvent) => {
+      if (hasUnsavedChanges) {
+        e.preventDefault()
+        e.returnValue = ''
+      }
+    }
+    window.addEventListener('beforeunload', handler)
+    return () => window.removeEventListener('beforeunload', handler)
+  }, [hasUnsavedChanges])
+
+  // Загрузка списка версий
+  useQuery({
+    queryKey: ['program-versions', id],
+    queryFn: async () => {
+      const response = await api.get(`/programs/${id}/versions`)
+      setVersions(response.data || [])
+      return response.data
+    },
+  })
 
   // Преобразуем program_data в табличный формат (используем локальные данные если есть изменения)
   const tableData = useMemo(() => {
@@ -99,113 +131,81 @@ const ProgramView = () => {
 
   // Получаем список недель
   const availableWeeks = useMemo(() => {
-    if (!program?.program_data?.weeks) return []
-    return Object.keys(program.program_data.weeks)
+    const dataSource = localProgramData || program?.program_data
+    if (!dataSource?.weeks) return [] as number[]
+    return Object.keys(dataSource.weeks)
       .map(Number)
       .sort((a, b) => a - b)
-  }, [program?.program_data])
+  }, [localProgramData || program?.program_data])
 
-  const handleCellChange = (rowIndex: number, columnKey: string, value: any) => {
-    const dataSource = localProgramData || program?.program_data
-    if (!dataSource) return
+  // Обработчик изменений ячеек
+  const handleCellChange = (rowIndex: number, columnId: string, value: any) => {
+    if (!localProgramData) return
 
-    const row = filteredData[rowIndex]
-    const weeks = JSON.parse(JSON.stringify(dataSource.weeks)) // Deep copy
-    const weekRecords = [...weeks[row.week]]
+    setLocalProgramData((prevData: any) => {
+      const newData = JSON.parse(JSON.stringify(prevData))
+      const tableRows = filteredData
+      const targetRow = tableRows[rowIndex]
+      const recordIndex = targetRow?._recordIndex
+      const week = targetRow?.week
 
-    // Обновляем значение в соответствующей записи
-    const record = weekRecords[row._recordIndex]
-    if (record) {
-      // Маппинг колонок на поля в данных
-      const fieldMap: Record<string, string> = {
-        day: 'Day',
-        session: 'Session',
-        microcycle: 'Microcycle',
-        deload: 'Deload',
-        exercise_name: `Ex${row.exercise_num}_Name`,
-        sets: `Ex${row.exercise_num}_Sets`,
-        reps: `Ex${row.exercise_num}_Reps`,
-        pattern: `Ex${row.exercise_num}_Pattern`,
-        alt: `Ex${row.exercise_num}_Alt`,
-        notes: `Ex${row.exercise_num}_Notes`,
+      if (recordIndex !== undefined && week !== undefined) {
+        const record = newData.weeks[week][recordIndex]
+        if (columnId === 'exercise_name') {
+          record[`Ex${targetRow.exercise_num}_Name`] = value
+        } else if (columnId === 'sets') {
+          record[`Ex${targetRow.exercise_num}_Sets`] = value
+        } else if (columnId === 'reps') {
+          record[`Ex${targetRow.exercise_num}_Reps`] = value
+        } else if (columnId === 'pattern') {
+          record[`Ex${targetRow.exercise_num}_Pattern`] = value
+        } else if (columnId === 'alt') {
+          record[`Ex${targetRow.exercise_num}_Alt`] = value
+        } else if (columnId === 'notes') {
+          record[`Ex${targetRow.exercise_num}_Notes`] = value
+        } else if (columnId === 'deload') {
+          record['Deload'] = value === '1' ? 1 : 0
+        }
       }
 
-      const fieldName = fieldMap[columnKey]
-      if (fieldName) {
-        // Преобразуем значение для deload (должно быть число)
-        if (columnKey === 'deload') {
-          record[fieldName] = value === '1' || value === 1 ? 1 : 0
-        } else if (columnKey === 'sets' || columnKey === 'day') {
-          record[fieldName] = typeof value === 'number' ? value : parseInt(value) || 0
-        } else {
-          record[fieldName] = value
-        }
+      return newData
+    })
 
-        weeks[row.week] = weekRecords
-        const updatedProgramData = {
-          ...dataSource,
-          weeks,
-        }
-
-        // Обновляем локальные данные вместо немедленного сохранения
-        setLocalProgramData(updatedProgramData)
-        setHasUnsavedChanges(true)
-      }
-    }
+    setHasUnsavedChanges(true)
   }
 
+  // Сохранение изменений
   const handleSave = () => {
-    if (localProgramData) {
-      updateMutation.mutate(localProgramData)
+    if (!localProgramData) return
+    updateMutation.mutate(localProgramData)
+  }
+
+  // Отмена изменений
+  const handleCancel = () => {
+    if (program?.program_data) {
+      const cloned = JSON.parse(JSON.stringify(program.program_data))
+      setLocalProgramData(cloned)
+      setHasUnsavedChanges(false)
     }
   }
 
-  const handleCancel = () => {
-    setLocalProgramData(null)
-    setHasUnsavedChanges(false)
-    queryClient.invalidateQueries({ queryKey: ['program', id] })
-  }
-
-  // Определяем колонки таблицы
-  const columns = [
-    { key: 'week', label: 'Неделя', type: 'number' as const, editable: false },
-    { key: 'day', label: 'День', type: 'number' as const },
-    { key: 'session', label: 'Тренировка', type: 'text' as const },
-    {
-      key: 'microcycle',
-      label: 'Микроцикл',
-      type: 'select' as const,
-      options: ['FB', 'UL', 'PPL', 'Upper', 'Lower', 'Full Body', ''],
-    },
-    {
-      key: 'deload',
-      label: 'Разгрузка',
-      type: 'select' as const,
-      options: ['0', '1'],
-    },
-    { key: 'exercise_name', label: 'Упражнение', type: 'text' as const },
-    { key: 'sets', label: 'Подходы', type: 'number' as const },
-    { key: 'reps', label: 'Повторения', type: 'text' as const },
-    {
-      key: 'pattern',
-      label: 'Паттерн',
-      type: 'select' as const,
-      options: [
-        '',
-        'Колено-доминант',
-        'Таз-доминант',
-        'Тяга горизонтальная',
-        'Тяга вертикальная',
-        'Жим горизонтальный',
-        'Жим вертикальный',
-        'Изоляция',
-        'Кардио',
-        'Другое',
-      ],
-    },
-    { key: 'alt', label: 'Альтернативы', type: 'text' as const },
-    { key: 'notes', label: 'Примечания', type: 'text' as const },
-  ]
+  // Колонки таблицы
+  const columns = React.useMemo(
+    () => [
+      { Header: 'Неделя', accessor: 'week' },
+      { Header: 'День', accessor: 'day' },
+      { Header: 'Сессия', accessor: 'session' },
+      { Header: 'Микроцикл', accessor: 'microcycle' },
+      { Header: 'Делод', accessor: 'deload', isSelect: true, options: ['0', '1'] },
+      { Header: 'Упражнение', accessor: 'exercise_name', isEditable: true },
+      { Header: 'Подходы', accessor: 'sets', isEditable: true },
+      { Header: 'Повторения', accessor: 'reps', isEditable: true },
+      { Header: 'Паттерн', accessor: 'pattern', isEditable: true },
+      { Header: 'Альтернатива', accessor: 'alt', isEditable: true },
+      { Header: 'Заметки', accessor: 'notes', isEditable: true },
+    ],
+    []
+  )
 
   if (isLoading) {
     return <div>Загрузка...</div>
@@ -217,30 +217,86 @@ const ProgramView = () => {
 
   return (
     <div>
-      <div className="flex justify-between items-center mb-8">
-        <div>
+      <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4 mb-8">
+        <div className="space-y-2">
           <h1 className="text-3xl font-bold text-gray-900">Программа #{program.id}</h1>
-          <p className="text-gray-500 mt-2">
-            Клиент: #{program.client_id} | Тип: {program.program_type}
-          </p>
-        </div>
-        {hasUnsavedChanges && (
-          <div className="flex gap-2">
-            <button
-              onClick={handleCancel}
-              className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50"
-            >
-              Отмена
-            </button>
-            <button
-              onClick={handleSave}
-              disabled={updateMutation.isPending}
-              className="px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 disabled:opacity-50"
-            >
-              {updateMutation.isPending ? 'Сохранение...' : 'Сохранить изменения'}
-            </button>
+          <div className="text-sm text-gray-600 space-y-1">
+            <p>
+              <span className="font-medium">Клиент:</span> #{program.client_id}
+            </p>
+            <p>
+              <span className="font-medium">Тип:</span> {program.program_type || '—'}
+            </p>
+            <p>
+              <span className="font-medium">Создана:</span>{' '}
+              {program.created_at ? new Date(program.created_at).toLocaleString('ru-RU') : '—'}
+            </p>
+            <p>
+              <span className="font-medium">Назначена:</span>{' '}
+              {program.assigned_at ? new Date(program.assigned_at).toLocaleString('ru-RU') : '—'}
+            </p>
           </div>
-        )}
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            onClick={async () => {
+              try {
+                const resp = await api.get(`/programs/${id}/export-pdf`)
+                const url = resp.data?.url
+                if (url) window.open(url, '_blank')
+              } catch {
+                alert('Не удалось экспортировать PDF')
+              }
+            }}
+            className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-100"
+            title="Экспортировать в PDF"
+          >
+            Экспорт PDF
+          </button>
+          <button
+            onClick={async () => {
+              const message = prompt('Сообщение к программе (необязательно):', 'Ваша персональная программа тренировок')
+              const useTelegram = confirm('Отправить в Telegram? (Да/Нет)')
+              const useEmail = confirm('Отправить на e-mail? (Да/Нет)')
+              const channels: string[] = []
+              if (useTelegram) channels.push('telegram')
+              if (useEmail) channels.push('email')
+              if (channels.length === 0) return
+              try {
+                const resp = await api.post(`/programs/${id}/send`, { channels, message })
+                const results = resp.data?.results || {}
+                const tg = results.telegram ? (results.telegram.success ? 'Telegram: отправлено' : `Telegram: ${results.telegram.error || 'ошибка'}`) : null
+                const em = results.email ? (results.email.success ? 'Email: отправлено' : `Email: ${results.email.error || 'ошибка'}`) : null
+                alert([tg, em].filter(Boolean).join('\n') || 'Готово')
+              } catch {
+                alert('Не удалось отправить программу')
+              }
+            }}
+            className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-100"
+            title="Отправить клиенту (Telegram/E-mail)"
+          >
+            Отправить
+          </button>
+          {hasUnsavedChanges && (
+            <span className="text-xs text-amber-600 bg-amber-100 px-2 py-1 rounded-full">
+              Есть несохранённые изменения
+            </span>
+          )}
+          <button
+            onClick={handleSave}
+            disabled={!hasUnsavedChanges || updateMutation.isPending}
+            className="px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 disabled:opacity-50"
+          >
+            {updateMutation.isPending ? 'Сохранение...' : 'Сохранить изменения'}
+          </button>
+          <button
+            onClick={handleCancel}
+            disabled={!hasUnsavedChanges}
+            className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-100 disabled:opacity-50"
+          >
+            Отменить изменения
+          </button>
+        </div>
       </div>
 
       {/* Фильтр по неделям */}
@@ -271,6 +327,23 @@ const ProgramView = () => {
                 Неделя {week}
               </button>
             ))}
+            <div className="ml-auto">
+              <button
+                onClick={async () => {
+                  try {
+                    await api.post(`/programs/${id}/versions`)
+                    // refresh page data next time if needed
+                    alert('Снимок версии сохранён')
+                  } catch {
+                    alert('Не удалось создать снимок')
+                  }
+                }}
+                className="px-3 py-1 rounded-lg text-sm border border-gray-300 hover:bg-gray-100"
+                title="Создать снимок текущей версии"
+              >
+                Создать снимок
+              </button>
+            </div>
           </div>
         </div>
       )}
@@ -282,17 +355,10 @@ const ProgramView = () => {
             <h2 className="text-xl font-bold text-gray-900">
               {selectedWeek !== null ? `Неделя ${selectedWeek}` : 'Все тренировки'}
             </h2>
-            <div className="text-sm text-gray-500">
-              Всего записей: {filteredData.length}
-            </div>
+            <div className="text-sm text-gray-500">Всего упражнений: {filteredData.length}</div>
           </div>
           <div className="mb-4 text-sm text-gray-600">
-            💡 Нажмите на любую ячейку для редактирования. Не забудьте нажать "Сохранить изменения" после редактирования.
-            {hasUnsavedChanges && (
-              <span className="ml-2 text-orange-600 font-medium">
-                ⚠️ Есть несохраненные изменения
-              </span>
-            )}
+            💡 Нажмите на ячейку, чтобы изменить упражнение или параметры. После правок сохраните изменения.
           </div>
           <EditableTable
             data={filteredData}
@@ -332,6 +398,39 @@ const ProgramView = () => {
             </pre>
           </div>
         </details>
+      )}
+
+      {versions.length > 0 && (
+        <div className="mt-6 bg-white rounded-lg shadow p-6">
+          <h3 className="text-lg font-semibold text-gray-900 mb-4">История версий</h3>
+          <div className="space-y-2">
+            {versions.map((v) => (
+              <div key={v.id} className="flex items-center justify-between text-sm border-b pb-2">
+                <div className="text-gray-700">
+                  <span className="font-medium">Версия #{v.id}</span>{' '}
+                  <span className="text-gray-500">
+                    {v.created_at ? new Date(v.created_at).toLocaleString('ru-RU') : ''}
+                  </span>
+                </div>
+                <button
+                  onClick={async () => {
+                    if (!confirm('Восстановить эту версию? Несохранённые изменения будут потеряны.')) return
+                    await api.post(`/programs/versions/${v.id}/restore`)
+                    setLocalProgramData(null)
+                    setHasUnsavedChanges(false)
+                    queryClient.invalidateQueries({ queryKey: ['program', id] })
+                    // Перезагрузка списка версий
+                    const res = await api.get(`/programs/${id}/versions`)
+                    setVersions(res.data || [])
+                  }}
+                  className="px-3 py-1 rounded-lg border border-gray-300 hover:bg-gray-100"
+                >
+                  Восстановить
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
       )}
     </div>
   )

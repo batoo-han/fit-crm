@@ -267,12 +267,40 @@ const HeaderSettings = ({ settings, updateSetting }: any) => {
       <div className="space-y-4">
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-2">Логотип (URL)</label>
-          <input
-            type="text"
-            value={settings.logo_url || ''}
-            onChange={(e) => updateSetting('logo_url', e.target.value)}
-            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500"
-          />
+          <div className="flex gap-2">
+            <input
+              type="text"
+              value={settings.logo_url || ''}
+              onChange={(e) => updateSetting('logo_url', e.target.value)}
+              className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500"
+              placeholder="https://..."
+            />
+            <label className="px-3 py-2 border border-gray-300 rounded-lg cursor-pointer hover:bg-gray-50">
+              Загрузить
+              <input
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={async (e) => {
+                  const file = e.target.files?.[0]
+                  if (!file) return
+                  const formData = new FormData()
+                  formData.append('file', file)
+                  try {
+                    const res = await api.post('/uploads', formData, {
+                      headers: { 'Content-Type': 'multipart/form-data' },
+                    })
+                    const url = res.data?.url
+                    if (url) updateSetting('logo_url', url)
+                  } catch (err) {
+                    alert('Ошибка загрузки файла')
+                  } finally {
+                    e.currentTarget.value = ''
+                  }
+                }}
+              />
+            </label>
+          </div>
         </div>
         
         <div>
@@ -488,12 +516,40 @@ const WidgetSettings = ({ settings, updateSetting }: any) => {
             
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">Логотип (URL)</label>
-              <input
-                type="text"
-                value={settings.widget_logo || ''}
-                onChange={(e) => updateSetting('widget_logo', e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500"
-              />
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  value={settings.widget_logo || ''}
+                  onChange={(e) => updateSetting('widget_logo', e.target.value)}
+                  className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500"
+                  placeholder="https://..."
+                />
+                <label className="px-3 py-2 border border-gray-300 rounded-lg cursor-pointer hover:bg-gray-50">
+                  Загрузить
+                  <input
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    onChange={async (e) => {
+                      const file = e.target.files?.[0]
+                      if (!file) return
+                      const formData = new FormData()
+                      formData.append('file', file)
+                      try {
+                        const res = await api.post('/uploads', formData, {
+                          headers: { 'Content-Type': 'multipart/form-data' },
+                        })
+                        const url = res.data?.url
+                        if (url) updateSetting('widget_logo', url)
+                      } catch (err) {
+                        alert('Ошибка загрузки файла')
+                      } finally {
+                        e.currentTarget.value = ''
+                      }
+                    }}
+                  />
+                </label>
+              </div>
             </div>
             
             <div>

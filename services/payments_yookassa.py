@@ -14,6 +14,9 @@ async def create_yookassa_payment(
     payment_id: str,
     metadata: Optional[Dict[str, Any]] = None,
     customer_email: Optional[str] = None,
+    override_shop_id: Optional[str] = None,
+    override_secret_key: Optional[str] = None,
+    override_return_url: Optional[str] = None,
 ) -> Dict[str, Any]:
     """Create a payment in YooKassa and return its JSON.
 
@@ -26,13 +29,16 @@ async def create_yookassa_payment(
     Returns:
         Dict with YooKassa payment object or raises Exception.
     """
-    if not (YOOKASSA_SHOP_ID and YOOKASSA_SECRET_KEY):
+    shop_id = override_shop_id or YOOKASSA_SHOP_ID
+    secret = override_secret_key or YOOKASSA_SECRET_KEY
+    return_url = override_return_url or YOOKASSA_RETURN_URL
+    if not (shop_id and secret):
         raise RuntimeError("YooKassa credentials are not configured")
 
     url = "https://api.yookassa.ru/v3/payments"
     idempotence_key = str(uuid.uuid4())
 
-    auth = base64.b64encode(f"{YOOKASSA_SHOP_ID}:{YOOKASSA_SECRET_KEY}".encode()).decode()
+    auth = base64.b64encode(f"{shop_id}:{secret}".encode()).decode()
 
     # Формируем чек согласно 54-ФЗ
     receipt = {
@@ -61,7 +67,7 @@ async def create_yookassa_payment(
         },
         "confirmation": {
             "type": "redirect",
-            "return_url": YOOKASSA_RETURN_URL,
+            "return_url": return_url,
         },
         "capture": True,
         "description": description[:128],

@@ -1,56 +1,146 @@
-"""FAQ handlers."""
+"""FAQ handlers with database integration."""
 from aiogram import Router, F
 from aiogram.types import CallbackQuery, Message, InlineKeyboardMarkup, InlineKeyboardButton
+from database.db import get_db_session
+from database.models_crm import FAQ
+from services.faq_service import FAQService
+from loguru import logger
 
 router = Router()
 
 
-def get_faq_keyboard() -> InlineKeyboardMarkup:
-    """Create FAQ keyboard."""
-    return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="💰 Сколько стоят услуги?", callback_data="faq_price")],
-        [InlineKeyboardButton(text="⚡ Как быстро появятся результаты?", callback_data="faq_results")],
-        [InlineKeyboardButton(text="🎯 Нужен ли опыт тренировок?", callback_data="faq_experience")],
-        [InlineKeyboardButton(text="🏥 Можно ли тренироваться при проблемах со здоровьем?", callback_data="faq_health")],
-        [InlineKeyboardButton(text="💻 Как работает онлайн-сопровождение?", callback_data="faq_online")],
-        [InlineKeyboardButton(text="⬅️ Назад", callback_data="back_to_menu")],
-    ])
+def get_faq_keyboard(db_session=None) -> InlineKeyboardMarkup:
+    """Create FAQ keyboard from database."""
+    db = db_session or get_db_session()
+    try:
+        # Get top 5 FAQ items by priority
+        faq_items = FAQService.get_all_faq(db, is_active=True)[:5]
+        
+        buttons = []
+        for faq in faq_items:
+            # Truncate question for button text
+            button_text = faq.question[:40] + "..." if len(faq.question) > 40 else faq.question
+            buttons.append([InlineKeyboardButton(text=button_text, callback_data=f"faq_{faq.id}")])
+        
+        buttons.append([InlineKeyboardButton(text="⬅️ Назад", callback_data="back_to_menu")])
+        
+        return InlineKeyboardMarkup(inline_keyboard=buttons)
+    except Exception as e:
+        logger.error(f"Error getting FAQ keyboard: {e}")
+        # Fallback to default keyboard
+        return InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="💰 Цены", callback_data="faq_price")],
+            [InlineKeyboardButton(text="⚡ Результаты", callback_data="faq_results")],
+            [InlineKeyboardButton(text="🎯 Опыт", callback_data="faq_experience")],
+            [InlineKeyboardButton(text="🏥 Здоровье", callback_data="faq_health")],
+            [InlineKeyboardButton(text="💻 Онлайн", callback_data="faq_online")],
+            [InlineKeyboardButton(text="⬅️ Назад", callback_data="back_to_menu")],
+        ])
+    finally:
+        if not db_session:
+            db.close()
 
 
 @router.message(F.text == "/faq")
 async def cmd_faq(message: Message):
     """Handle /faq command."""
-    faq_text = """
+    db = get_db_session()
+    try:
+        faq_text = """
 ❓ Часто задаваемые вопросы
 
 Выбери интересующий вопрос:
-    """
-    
-    await message.answer(
-        faq_text,
-        reply_markup=get_faq_keyboard()
-    )
+        """
+        
+        await message.answer(
+            faq_text,
+            reply_markup=get_faq_keyboard(db)
+        )
+    except Exception as e:
+        logger.error(f"Error showing FAQ: {e}")
+        await message.answer("Произошла ошибка при загрузке FAQ. Попробуйте позже.")
+    finally:
+        db.close()
 
 
 @router.callback_query(F.data == "faq")
 async def show_faq(callback: CallbackQuery):
     """Show FAQ menu."""
-    faq_text = """
+    db = get_db_session()
+    try:
+        faq_text = """
 ❓ Часто задаваемые вопросы
 
 Выбери интересующий вопрос:
-    """
-    
-    await callback.message.edit_text(
-        faq_text,
-        reply_markup=get_faq_keyboard()
-    )
-    await callback.answer()
+        """
+        
+        await callback.message.edit_text(
+            faq_text,
+            reply_markup=get_faq_keyboard(db)
+        )
+        await callback.answer()
+    except Exception as e:
+        logger.error(f"Error showing FAQ: {e}")
+        await callback.answer("Ошибка при загрузке FAQ", show_alert=True)
+    finally:
+        db.close()
 
 
-@router.callback_query(F.data == "faq_price")
-async def faq_price(callback: CallbackQuery):
-    """Answer about pricing."""
+@router.callback_query(F.data.startswith("faq_"))
+async def show_faq_answer(callback: CallbackQuery):
+    """Show FAQ answer by ID."""
+    db = get_db_session()
+    try:
+        # Extract FAQ ID from callback data
+        faq_id_str = callback.data.replace("faq_", "")
+        
+        # Handle legacy callback data
+        if faq_id_str in ["price", "results", "experience", "health", "online"]:
+            # Use legacy handlers for backward compatibility
+            if faq_id_str == "price":
+                await faq_price_legacy(callback)
+            elif faq_id_str == "results":
+                await faq_results_legacy(callback)
+            elif faq_id_str == "experience":
+                await faq_experience_legacy(callback)
+            elif faq_id_str == "health":
+                await faq_health_legacy(callback)
+            elif faq_id_str == "online":
+                await faq_online_legacy(callback)
+            return
+        
+        faq_id = int(faq_id_str)
+        faq = FAQService.get_faq_by_id(db, faq_id)
+        
+        if not faq:
+            await callback.answer("Вопрос не найден", show_alert=True)
+            return
+        
+        # Increment use count
+        faq.use_count += 1
+        db.commit()
+        
+        await callback.message.edit_text(
+            faq.answer,
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                [InlineKeyboardButton(text="⬅️ Назад к FAQ", callback_data="faq")],
+                [InlineKeyboardButton(text="🏠 Главное меню", callback_data="back_to_menu")],
+            ]),
+            parse_mode="Markdown"
+        )
+        await callback.answer()
+    except ValueError:
+        await callback.answer("Неверный ID вопроса", show_alert=True)
+    except Exception as e:
+        logger.error(f"Error showing FAQ answer: {e}")
+        await callback.answer("Ошибка при загрузке ответа", show_alert=True)
+    finally:
+        db.close()
+
+
+# Legacy handlers for backward compatibility
+async def faq_price_legacy(callback: CallbackQuery):
+    """Answer about pricing (legacy)."""
     answer = """
 💰 **Сколько стоят ваши услуги?**
 
@@ -78,9 +168,8 @@ async def faq_price(callback: CallbackQuery):
     await callback.answer()
 
 
-@router.callback_query(F.data == "faq_results")
-async def faq_results(callback: CallbackQuery):
-    """Answer about results."""
+async def faq_results_legacy(callback: CallbackQuery):
+    """Answer about results (legacy)."""
     answer = """
 ⚡ **Как быстро я увижу результаты?**
 
@@ -109,9 +198,8 @@ async def faq_results(callback: CallbackQuery):
     await callback.answer()
 
 
-@router.callback_query(F.data == "faq_experience")
-async def faq_experience(callback: CallbackQuery):
-    """Answer about required experience."""
+async def faq_experience_legacy(callback: CallbackQuery):
+    """Answer about required experience (legacy)."""
     answer = """
 🎯 **Нужен ли мне опыт тренировок?**
 
@@ -142,9 +230,8 @@ async def faq_experience(callback: CallbackQuery):
     await callback.answer()
 
 
-@router.callback_query(F.data == "faq_health")
-async def faq_health(callback: CallbackQuery):
-    """Answer about health issues."""
+async def faq_health_legacy(callback: CallbackQuery):
+    """Answer about health issues (legacy)."""
     answer = """
 🏥 **Можно ли тренироваться при проблемах со здоровьем?**
 
@@ -177,9 +264,8 @@ async def faq_health(callback: CallbackQuery):
     await callback.answer()
 
 
-@router.callback_query(F.data == "faq_online")
-async def faq_online(callback: CallbackQuery):
-    """Answer about online coaching."""
+async def faq_online_legacy(callback: CallbackQuery):
+    """Answer about online coaching (legacy)."""
     answer = """
 💻 **Как работает онлайн-сопровождение?**
 

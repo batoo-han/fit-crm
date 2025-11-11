@@ -13,6 +13,7 @@ class PipelineStage(Base):
     __tablename__ = "pipeline_stages"
 
     id = Column(Integer, primary_key=True)
+    pipeline_id = Column(Integer, ForeignKey("sales_pipelines.id"), nullable=True)  # принадлежность воронке (nullable = Default)
     name = Column(String(100), nullable=False)  # Название этапа
     order = Column(Integer, nullable=False, default=0)  # Порядок в воронке
     color = Column(String(20), default="#3B82F6")  # Цвет для UI (hex)
@@ -23,6 +24,7 @@ class PipelineStage(Base):
 
     # Relationships
     client_pipelines = relationship("ClientPipeline", back_populates="stage")
+    pipeline = relationship("SalesPipeline", back_populates="stages")
 
 
 class ClientPipeline(Base):
@@ -30,6 +32,7 @@ class ClientPipeline(Base):
     __tablename__ = "client_pipelines"
 
     id = Column(Integer, primary_key=True)
+    pipeline_id = Column(Integer, ForeignKey("sales_pipelines.id"), nullable=True)  # какая воронка
     client_id = Column(Integer, ForeignKey("clients.id"), nullable=False)
     stage_id = Column(Integer, ForeignKey("pipeline_stages.id"), nullable=False)
     moved_at = Column(DateTime, default=datetime.utcnow)
@@ -41,6 +44,7 @@ class ClientPipeline(Base):
     client = relationship("Client", back_populates="pipeline_history", foreign_keys="[ClientPipeline.client_id]")
     stage = relationship("PipelineStage", back_populates="client_pipelines")
     moved_by_user = relationship("User", foreign_keys="[ClientPipeline.moved_by]")
+    pipeline = relationship("SalesPipeline", back_populates="client_entries")
 
 
 class ClientBotLink(Base):
@@ -221,6 +225,215 @@ class Reminder(Base):
     client = relationship("Client", back_populates="reminders", foreign_keys="[Reminder.client_id]")
     program = relationship("TrainingProgram", foreign_keys="[Reminder.program_id]")
 
+
+class FAQ(Base):
+    """FAQ model - stores frequently asked questions and answers."""
+    __tablename__ = "faq"
+
+    id = Column(Integer, primary_key=True)
+    question = Column(Text, nullable=False)  # Вопрос
+    answer = Column(Text, nullable=False)  # Ответ
+    category = Column(String(50), nullable=True)  # Категория (pricing, training, health, etc.)
+    keywords = Column(Text, nullable=True)  # Ключевые слова для поиска (JSON array)
+    priority = Column(Integer, default=0)  # Приоритет (чем выше, тем чаще показывается)
+    is_active = Column(Boolean, default=True)  # Активен ли вопрос
+    use_count = Column(Integer, default=0)  # Сколько раз использовался
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_by = Column(Integer, ForeignKey("users.id"), nullable=True)  # Кто создал
+    updated_by = Column(Integer, ForeignKey("users.id"), nullable=True)  # Кто обновил
+
+    creator = relationship("User", foreign_keys="[FAQ.created_by]")
+    updater = relationship("User", foreign_keys="[FAQ.updated_by]")
+
+
+class SalesScenario(Base):
+    """Sales scenario model - stores sales scenarios with triggers and messages."""
+    __tablename__ = "sales_scenarios"
+
+    id = Column(Integer, primary_key=True)
+    name = Column(String(100), nullable=False)  # Название сценария
+    description = Column(Text, nullable=True)  # Описание сценария
+    trigger_type = Column(String(50), nullable=False)  # Тип триггера (client_action, pipeline_stage, time_based, etc.)
+    trigger_conditions = Column(Text, nullable=True)  # Условия триггера (JSON)
+    message_template = Column(Text, nullable=False)  # Шаблон сообщения
+    action_type = Column(String(50), nullable=True)  # Тип действия (suggest_program, suggest_consultation, etc.)
+    is_active = Column(Boolean, default=True)  # Активен ли сценарий
+    priority = Column(Integer, default=0)  # Приоритет
+    use_count = Column(Integer, default=0)  # Сколько раз использовался
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_by = Column(Integer, ForeignKey("users.id"), nullable=True)
+    updated_by = Column(Integer, ForeignKey("users.id"), nullable=True)
+
+    creator = relationship("User", foreign_keys="[SalesScenario.created_by]")
+    updater = relationship("User", foreign_keys="[SalesScenario.updated_by]")
+
+class MarketingChannel(enum.Enum):
+    TELEGRAM = "telegram"
+    EMAIL = "email"
+    BOTH = "both"
+
+class CampaignStatus(enum.Enum):
+    DRAFT = "draft"
+    SCHEDULED = "scheduled"
+    RUNNING = "running"
+    PAUSED = "paused"
+    COMPLETED = "completed"
+
+class MarketingCampaign(Base):
+    """Marketing campaign definition."""
+    __tablename__ = "marketing_campaigns"
+
+    id = Column(Integer, primary_key=True)
+    name = Column(String(120), nullable=False)
+    description = Column(Text, nullable=True)
+    status = Column(String(20), default=CampaignStatus.DRAFT.value)
+    channel = Column(String(20), default=MarketingChannel.BOTH.value)
+    schedule_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_by = Column(Integer, ForeignKey("users.id"), nullable=True)
+    updated_by = Column(Integer, ForeignKey("users.id"), nullable=True)
+    params = Column(Text, nullable=True)  # JSON: throttling, UTM, etc.
+
+class CampaignAudience(Base):
+    """Segment definition used by campaigns."""
+    __tablename__ = "campaign_audiences"
+
+    id = Column(Integer, primary_key=True)
+    name = Column(String(120), nullable=False)
+    description = Column(Text, nullable=True)
+    filter_json = Column(Text, nullable=True)  # JSON DSL for selecting clients
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_by = Column(Integer, ForeignKey("users.id"), nullable=True)
+    updated_by = Column(Integer, ForeignKey("users.id"), nullable=True)
+
+class CampaignMessage(Base):
+    """Multi-channel message template for campaigns."""
+    __tablename__ = "campaign_messages"
+
+    id = Column(Integer, primary_key=True)
+    campaign_id = Column(Integer, ForeignKey("marketing_campaigns.id"), nullable=False, index=True)
+    title = Column(String(200), nullable=True)
+    body_text = Column(Text, nullable=False)  # Text template, variables via {first_name}, etc.
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+class CampaignRun(Base):
+    """Execution instance for a campaign (each schedule creates run)."""
+    __tablename__ = "campaign_runs"
+
+    id = Column(Integer, primary_key=True)
+    campaign_id = Column(Integer, ForeignKey("marketing_campaigns.id"), nullable=False, index=True)
+    audience_id = Column(Integer, ForeignKey("campaign_audiences.id"), nullable=True)
+    started_at = Column(DateTime, nullable=True)
+    completed_at = Column(DateTime, nullable=True)
+    status = Column(String(20), default="pending")  # pending, running, completed, failed, paused
+    total = Column(Integer, default=0)
+    sent = Column(Integer, default=0)
+    errors = Column(Integer, default=0)
+    meta = Column(Text, nullable=True)  # JSON metrics, logs brief
+
+class ClientChannelPreference(Base):
+    """Client-level channel preferences for marketing."""
+    __tablename__ = "client_channel_preferences"
+
+    id = Column(Integer, primary_key=True)
+    client_id = Column(Integer, ForeignKey("clients.id"), nullable=False, index=True)
+    allow_telegram = Column(Boolean, default=True)
+    allow_email = Column(Boolean, default=True)
+    quiet_hours_start = Column(Integer, nullable=True)  # 0-23
+    quiet_hours_end = Column(Integer, nullable=True)    # 0-23
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+class CampaignDelivery(Base):
+    """Per-client delivery log to enforce deduplication and frequency limits."""
+    __tablename__ = "campaign_deliveries"
+
+    id = Column(Integer, primary_key=True)
+    run_id = Column(Integer, ForeignKey("campaign_runs.id"), nullable=True, index=True)
+    campaign_id = Column(Integer, ForeignKey("marketing_campaigns.id"), nullable=False, index=True)
+    client_id = Column(Integer, ForeignKey("clients.id"), nullable=False, index=True)
+    channel = Column(String(20), nullable=False)  # telegram/email
+    status = Column(String(20), default="sent")  # sent/failed/skipped
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+class SocialPost(Base):
+    """Scheduled social network posts."""
+    __tablename__ = "social_posts"
+
+    id = Column(Integer, primary_key=True)
+    platform = Column(String(30), nullable=False, default="telegram")  # telegram | vk | instagram
+    title = Column(String(200), nullable=True)
+    content = Column(Text, nullable=False)
+    media_url = Column(String(500), nullable=True)
+    scheduled_at = Column(DateTime, nullable=True)
+    status = Column(String(20), default="draft")  # draft | scheduled | sent | failed
+    error = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+class SocialPostTemplate(Base):
+    """Reusable templates for social posts."""
+    __tablename__ = "social_post_templates"
+
+    id = Column(Integer, primary_key=True)
+    name = Column(String(150), nullable=False, unique=True)
+    platform = Column(String(30), nullable=True)  # optional default platform
+    title = Column(String(200), nullable=True)
+    content = Column(Text, nullable=False)
+    media_url = Column(String(500), nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+class PromoCode(Base):
+    """Promo codes for discounts."""
+    __tablename__ = "promo_codes"
+
+    id = Column(Integer, primary_key=True)
+    code = Column(String(50), unique=True, nullable=False, index=True)
+    description = Column(Text, nullable=True)
+    discount_type = Column(String(20), default="percent")  # percent | fixed
+    discount_value = Column(Float, nullable=False, default=0)
+    max_usage = Column(Integer, nullable=True)
+    per_client_limit = Column(Integer, nullable=True)
+    used_count = Column(Integer, default=0)
+    valid_from = Column(DateTime, nullable=True)
+    valid_to = Column(DateTime, nullable=True)
+    is_active = Column(Boolean, default=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+class PromoUsage(Base):
+    """Tracks promo code usage per client."""
+    __tablename__ = "promo_code_usages"
+
+    id = Column(Integer, primary_key=True)
+    promo_code_id = Column(Integer, ForeignKey("promo_codes.id"), nullable=False, index=True)
+    client_id = Column(Integer, ForeignKey("clients.id"), nullable=False, index=True)
+    payment_id = Column(Integer, ForeignKey("payments.id"), nullable=True)
+    used_at = Column(DateTime, default=datetime.utcnow)
+
+
+class SalesPipeline(Base):
+    """Multiple named sales funnels with parameters and enable/disable."""
+    __tablename__ = "sales_pipelines"
+
+    id = Column(Integer, primary_key=True)
+    name = Column(String(100), unique=True, nullable=False)
+    description = Column(Text, nullable=True)
+    is_enabled = Column(Boolean, default=True)
+    # JSON as text for simple storage of parameters/conditions (visibility rules, target segments, etc.)
+    params = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_by = Column(Integer, ForeignKey("users.id"), nullable=True)
+    updated_by = Column(Integer, ForeignKey("users.id"), nullable=True)
+
+    stages = relationship("PipelineStage", back_populates="pipeline")
+    client_entries = relationship("ClientPipeline", back_populates="pipeline")
 
 # Обновим существующие модели (добавим relationships)
 # Это будет сделано через миграции и обновление models.py

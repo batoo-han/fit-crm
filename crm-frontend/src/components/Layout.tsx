@@ -9,9 +9,14 @@ const Layout = () => {
     { name: 'Dashboard', href: '/dashboard', icon: '📊' },
     { name: 'Клиенты', href: '/clients', icon: '👥' },
     { name: 'Воронка', href: '/pipeline', icon: '🔄' },
+    { name: 'Воронки (мульти)', href: '/pipelines', icon: '🧭' },
+    { name: 'Маркетинг', href: '/marketing', icon: '📣' },
+    { name: 'Соцсети', href: '/social-posts', icon: '📢' },
+    { name: 'Интеграции', href: '/integrations', icon: '🔌' },
     { name: 'Программы', href: '/programs', icon: '📋' },
     { name: 'Аналитика', href: '/analytics', icon: '📈' },
     { name: 'Настройки сайта', href: '/website-settings', icon: '⚙️' },
+    { name: 'AI-агент', href: '/ai-agent', icon: '🤖' },
   ]
 
   return (
