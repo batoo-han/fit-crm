@@ -13,12 +13,13 @@ type SocialPost = {
   status: string
 }
 
-type SocialPreset = {
-  name: string
-  orderBy: 'id' | 'title' | 'scheduled_at'
-  seqStep: number
-  templateId?: number
-}
+// Тип пресета закомментирован до реализации UI для экспорта/импорта
+// type SocialPreset = {
+//   name: string
+//   orderBy: 'id' | 'title' | 'scheduled_at'
+//   seqStep: number
+//   templateId?: number
+// }
 
 const SocialPosts = () => {
   const queryClient = useQueryClient()
