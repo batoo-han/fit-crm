@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api } from '../services/api'
 
@@ -498,7 +498,6 @@ const Marketing = () => {
                 <div>Запусков: {summary.total_runs}</div>
                 <div>Уникальных клиентов: {summary.unique_clients}</div>
                 <div>Доставлено: {summary.sent_total} • Ошибок: {summary.failed_total}</div>
-                <div>Конверсии (оплата): {summary.conversions} • Конверсия: {(summary.conversion_rate * 100).toFixed(1)}%</div>
                 <div className="text-gray-600">
                   По каналам:
                   <ul className="list-disc ml-6">
@@ -597,7 +596,6 @@ const Marketing = () => {
               {(timeseries?.series || []).length === 0 && <div className="text-gray-500 text-sm">Нет данных</div>}
               {(timeseries?.series || []).map((row) => {
                 const total = row.total || 0
-                const maxBar = Math.max(1, total)
                 const sentPct = total ? Math.round((row.sent / total) * 100) : 0
                 const failedPct = total ? Math.round((row.failed / total) * 100) : 0
                 return (

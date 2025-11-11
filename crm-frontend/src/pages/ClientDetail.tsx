@@ -15,6 +15,7 @@ interface Client {
   height?: number | null
   weight?: number | null
   bmi?: string
+  location?: string
   pipeline_stage_id?: number | null
   status?: string
 }

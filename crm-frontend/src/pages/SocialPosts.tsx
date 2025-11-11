@@ -163,15 +163,6 @@ const SocialPosts = () => {
     },
   })
 
-  const createTemplateMutation = useMutation({
-    mutationFn: async (payload: { name: string; platform?: string; title?: string; content: string; media_url?: string }) => {
-      const res = await api.post('/social-posts/templates', payload)
-      return res.data
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['social-post-templates'] })
-    },
-  })
   const updateTemplateMutation = useMutation({
     mutationFn: async ({ id, payload }: { id: number; payload: { name: string; platform?: string; title?: string; content: string; media_url?: string } }) => {
       const res = await api.put(`/social-posts/templates/${id}`, payload)
@@ -187,9 +178,9 @@ const SocialPosts = () => {
     mutationFn: async (id: number) => {
       await api.delete(`/social-posts/templates/${id}`)
     },
-    onSuccess: () => {
+    onSuccess: (_, deletedId) => {
       queryClient.invalidateQueries({ queryKey: ['social-post-templates'] })
-      if (editingTemplate === id) {
+      if (editingTemplate === deletedId) {
         setEditingTemplate(null)
         setTemplateForm({ name: '', platform: '', title: '', content: '', media_url: '' })
       }
@@ -209,7 +200,6 @@ const SocialPosts = () => {
   const [editing, setEditing] = useState<SocialPost | null>(null)
   const [selected, setSelected] = useState<Set<number>>(new Set())
   const [bulkWhen, setBulkWhen] = useState('')
-  const [newTemplateName, setNewTemplateName] = useState('')
   const [editingTemplate, setEditingTemplate] = useState<number | null>(null)
   const [templateForm, setTemplateForm] = useState({ name: '', platform: '', title: '', content: '', media_url: '' })
   const [showPreview, setShowPreview] = useState(false)
@@ -220,7 +210,6 @@ const SocialPosts = () => {
   const [owTitle, setOwTitle] = useState(true)
   const [owMedia, setOwMedia] = useState(true)
   const [owPlatform, setOwPlatform] = useState(false)
-  const [presetName, setPresetName] = useState('')
   const [presets, setPresets] = useState<SocialPreset[]>([])
   const [quietEnabled, setQuietEnabled] = useState(false)
   const [quietStart, setQuietStart] = useState(9)
@@ -242,31 +231,32 @@ const SocialPosts = () => {
     } catch {}
   }
 
-  const exportPresets = () => {
-    const blob = new Blob([JSON.stringify(presets, null, 2)], { type: 'application/json' })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = 'social_presets.json'
-    a.click()
-    URL.revokeObjectURL(url)
-  }
+  // Функции экспорта/импорта пресетов закомментированы до реализации UI
+  // const exportPresets = () => {
+  //   const blob = new Blob([JSON.stringify(presets, null, 2)], { type: 'application/json' })
+  //   const url = URL.createObjectURL(blob)
+  //   const a = document.createElement('a')
+  //   a.href = url
+  //   a.download = 'social_presets.json'
+  //   a.click()
+  //   URL.revokeObjectURL(url)
+  // }
 
-  const importPresets = (file: File) => {
-    const reader = new FileReader()
-    reader.onload = () => {
-      try {
-        const parsed = JSON.parse(String(reader.result)) as SocialPreset[]
-        if (Array.isArray(parsed)) {
-          savePresets(parsed)
-          alert('Пресеты импортированы')
-        }
-      } catch {
-        alert('Некорректный файл пресетов')
-      }
-    }
-    reader.readAsText(file)
-  }
+  // const importPresets = (file: File) => {
+  //   const reader = new FileReader()
+  //   reader.onload = () => {
+  //     try {
+  //       const parsed = JSON.parse(String(reader.result)) as SocialPreset[]
+  //       if (Array.isArray(parsed)) {
+  //         savePresets(parsed)
+  //         alert('Пресеты импортированы')
+  //       }
+  //     } catch {
+  //       alert('Некорректный файл пресетов')
+  //     }
+  //   }
+  //   reader.readAsText(file)
+  // }
 
   const adjustToQuietHours = (d: Date) => {
     if (!quietEnabled) return d

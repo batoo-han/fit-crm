@@ -192,17 +192,17 @@ const ProgramView = () => {
   // Колонки таблицы
   const columns = React.useMemo(
     () => [
-      { Header: 'Неделя', accessor: 'week' },
-      { Header: 'День', accessor: 'day' },
-      { Header: 'Сессия', accessor: 'session' },
-      { Header: 'Микроцикл', accessor: 'microcycle' },
-      { Header: 'Делод', accessor: 'deload', isSelect: true, options: ['0', '1'] },
-      { Header: 'Упражнение', accessor: 'exercise_name', isEditable: true },
-      { Header: 'Подходы', accessor: 'sets', isEditable: true },
-      { Header: 'Повторения', accessor: 'reps', isEditable: true },
-      { Header: 'Паттерн', accessor: 'pattern', isEditable: true },
-      { Header: 'Альтернатива', accessor: 'alt', isEditable: true },
-      { Header: 'Заметки', accessor: 'notes', isEditable: true },
+      { key: 'week', label: 'Неделя' },
+      { key: 'day', label: 'День' },
+      { key: 'session', label: 'Сессия' },
+      { key: 'microcycle', label: 'Микроцикл' },
+      { key: 'deload', label: 'Делод', type: 'select' as const, options: ['0', '1'] },
+      { key: 'exercise_name', label: 'Упражнение', editable: true },
+      { key: 'sets', label: 'Подходы', editable: true },
+      { key: 'reps', label: 'Повторения', editable: true },
+      { key: 'pattern', label: 'Паттерн', editable: true },
+      { key: 'alt', label: 'Альтернатива', editable: true },
+      { key: 'notes', label: 'Заметки', editable: true },
     ],
     []
   )
