@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from 'react'
+import { useState, useMemo } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api } from '../services/api'
 
@@ -210,26 +210,29 @@ const SocialPosts = () => {
   const [owTitle, setOwTitle] = useState(true)
   const [owMedia, setOwMedia] = useState(true)
   const [owPlatform, setOwPlatform] = useState(false)
-  const [presets, setPresets] = useState<SocialPreset[]>([])
+  // Пресеты закомментированы до реализации UI для экспорта/импорта
+  // const [presets, setPresets] = useState<SocialPreset[]>([])
   const [quietEnabled, setQuietEnabled] = useState(false)
   const [quietStart, setQuietStart] = useState(9)
   const [quietEnd, setQuietEnd] = useState(21)
   const [showBulkPreview, setShowBulkPreview] = useState(false)
   const [useServerQuiet, setUseServerQuiet] = useState(false)
 
-  useEffect(() => {
-    try {
-      const raw = localStorage.getItem('social_presets')
-      if (raw) setPresets(JSON.parse(raw))
-    } catch {}
-  }, [])
+  // Загрузка пресетов из localStorage закомментирована до реализации UI
+  // useEffect(() => {
+  //   try {
+  //     const raw = localStorage.getItem('social_presets')
+  //     if (raw) setPresets(JSON.parse(raw))
+  //   } catch {}
+  // }, [])
 
-  const savePresets = (next: SocialPreset[]) => {
-    setPresets(next)
-    try {
-      localStorage.setItem('social_presets', JSON.stringify(next))
-    } catch {}
-  }
+  // Функция сохранения пресетов закомментирована до реализации UI
+  // const savePresets = (next: SocialPreset[]) => {
+  //   setPresets(next)
+  //   try {
+  //     localStorage.setItem('social_presets', JSON.stringify(next))
+  //   } catch {}
+  // }
 
   // Функции экспорта/импорта пресетов закомментированы до реализации UI
   // const exportPresets = () => {
