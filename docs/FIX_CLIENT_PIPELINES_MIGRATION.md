@@ -17,13 +17,30 @@ sqlite3.OperationalError: table client_pipelines has no column named pipeline_id
 
 ## Как применить на сервере
 
-### Вариант 1: Автоматическая миграция (рекомендуется)
+### Шаг 1: Проверьте статус API контейнера
 
-1. **Обновите код на сервере** (скопируйте обновленный `database/init_crm.py`)
+```bash
+# Проверьте, запущен ли контейнер
+docker ps | grep crm_api_prod
 
-2. **Перезапустите API контейнер**:
+# Проверьте логи на наличие ошибок
+docker logs crm_api_prod --tail 100
+```
+
+Если контейнер не запущен или постоянно перезапускается, сначала исправьте проблему запуска.
+
+### Шаг 2: Выполните миграцию
+
+#### Вариант 1: Автоматическая миграция (рекомендуется)
+
+1. **Обновите код на сервере** (скопируйте обновленные файлы):
+   - `database/init_crm.py`
+   - `scripts/migrate_client_pipelines.py` (если нужно)
+
+2. **Пересоберите и перезапустите API контейнер**:
    ```bash
-   docker-compose -f docker-compose.production.yml restart api
+   docker-compose -f docker-compose.production.yml build api
+   docker-compose -f docker-compose.production.yml up -d api
    ```
    
    При старте API автоматически вызовет `init_crm()`, который выполнит миграцию.
@@ -37,10 +54,21 @@ sqlite3.OperationalError: table client_pipelines has no column named pipeline_id
    ```
    Adding missing column client_pipelines.pipeline_id
    ```
+   или
+   ```
+   Successfully added column client_pipelines.pipeline_id
+   ```
 
-### Вариант 2: Ручная миграция (если автоматическая не сработала)
+### Вариант 2: Ручная миграция через Python (если автоматическая не сработала)
 
-Если по какой-то причине автоматическая миграция не сработала, можно выполнить миграцию вручную:
+Если автоматическая миграция не сработала, выполните миграцию через Python:
+
+```bash
+# Выполните миграцию через Python скрипт
+docker exec -it crm_api_prod python scripts/migrate_client_pipelines.py
+```
+
+Или напрямую через Python:
 
 ```bash
 # Подключитесь к контейнеру
@@ -48,31 +76,22 @@ docker exec -it crm_api_prod python
 
 # В Python выполните:
 from database.db import engine
-from sqlalchemy import text
+from sqlalchemy import text, inspect
 
-with engine.connect() as conn:
-    # Проверяем, существует ли колонка
-    result = conn.execute(text("PRAGMA table_info(client_pipelines)"))
-    columns = [row[1] for row in result]
-    
-    if 'pipeline_id' not in columns:
-        print("Добавляем колонку pipeline_id...")
+inspector = inspect(engine)
+columns = [col["name"] for col in inspector.get_columns("client_pipelines")]
+
+if 'pipeline_id' not in columns:
+    print("Добавляем колонку pipeline_id...")
+    with engine.connect() as conn:
         conn.execute(text("ALTER TABLE client_pipelines ADD COLUMN pipeline_id INTEGER"))
         conn.commit()
-        print("Колонка добавлена успешно!")
-    else:
-        print("Колонка pipeline_id уже существует")
+    print("Колонка добавлена успешно!")
+else:
+    print("Колонка pipeline_id уже существует")
 ```
 
-Или напрямую через SQLite:
-
-```bash
-# Найдите путь к базе данных
-docker exec -it crm_api_prod ls -la /data/
-
-# Выполните миграцию (замените путь к БД на актуальный)
-docker exec -it crm_api_prod sqlite3 /data/crm.db "ALTER TABLE client_pipelines ADD COLUMN pipeline_id INTEGER;"
-```
+**Примечание**: `sqlite3` не установлен в контейнере, используйте Python для миграций.
 
 ## Проверка
 

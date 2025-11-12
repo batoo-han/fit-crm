@@ -61,13 +61,26 @@ def ensure_optional_columns():
             if not table_exists(table):
                 logger.debug(f"Table {table} does not exist, skipping column check")
                 return
-            columns = [col["name"] for col in inspector.get_columns(table)]
+            try:
+                columns = [col["name"] for col in inspector.get_columns(table)]
+            except Exception as e:
+                logger.warning(f"Could not get columns for {table}: {e}, trying direct SQL")
+                # Fallback: use direct SQL query
+                with engine.connect() as conn:
+                    result = conn.execute(text(f"PRAGMA table_info({table})"))
+                    columns = [row[1] for row in result]
+            
             if column not in columns:
                 logger.info(f"Adding missing column {table}.{column}")
-                with engine.connect() as conn:
-                    # DDL should include column name and type, e.g., "email VARCHAR(255)"
-                    conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {column} {ddl}"))
-                    conn.commit()
+                try:
+                    with engine.connect() as conn:
+                        # DDL should include column name and type, e.g., "email VARCHAR(255)"
+                        conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {column} {ddl}"))
+                        conn.commit()
+                    logger.info(f"Successfully added column {table}.{column}")
+                except Exception as e:
+                    logger.error(f"Failed to add column {table}.{column}: {e}")
+                    raise
 
         ensure("clients", "email", "VARCHAR(255)")
         
