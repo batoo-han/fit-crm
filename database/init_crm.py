@@ -100,6 +100,9 @@ def ensure_optional_columns():
         
         # Ensure pipeline_id column exists in pipeline_stages (for multi-pipeline support)
         ensure("pipeline_stages", "pipeline_id", "INTEGER")
+        
+        # Ensure pipeline_id column exists in client_pipelines (for multi-pipeline support)
+        ensure("client_pipelines", "pipeline_id", "INTEGER")
             
     except Exception as e:
         logger.error(f"Error ensuring optional columns: {e}")

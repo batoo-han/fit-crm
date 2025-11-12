@@ -595,6 +595,10 @@ RIR (запас повторений)
 
 scp -r "J:\Проекты\Фитнес-тренер\workflow\dnk\scripts.js" batoo@31.59.120.22:/var/www/dnk
 scp -r batoo@31.59.120.22:/var/www/dnk "J:/dnk/"
+pscp J:\dnk\script.js batoo@31.59.120.22:/home/batoo/dnk
+pscp -r J:\dnk\ batoo@31.59.120.22:/home/batoo/dnk
+sudo cp /home/batoo/dnk/script.js /var/www/dnk
+sudo chown -R www-data:www-data /var/www/dnk
 
 отлично.
 теперь нужно подготовить всю связку приложение + сайт. Это будет работать на одном сервере - https://batoohan.ru/ . Ubuntu server 24.04. Сервис будет установлен отдельно через сборку в докер. На сервере сайт работает через nginx/
