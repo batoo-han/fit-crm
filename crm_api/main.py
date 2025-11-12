@@ -178,6 +178,12 @@ async def health_check():
     return {"status": "healthy"}
 
 
+@app.get("/api/health")
+async def health_check_api():
+    """Health check endpoint, доступный через префикс /api для nginx."""
+    return {"status": "healthy"}
+
+
 if __name__ == "__main__":
     uvicorn.run(
         app,
