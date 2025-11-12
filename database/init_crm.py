@@ -11,7 +11,7 @@ from database.models_crm import (
     PipelineStage, User, ClientPipeline, ClientAction,
     ClientContact, ProgressJournal, ClientBotLink, Reminder, FAQ, SalesScenario
 )
-from sqlalchemy import inspect, text
+from sqlalchemy import inspect, text, or_
 from loguru import logger
 import bcrypt
 import os
@@ -153,25 +153,43 @@ def create_default_admin_user():
         admin_password = os.getenv("ADMIN_PASSWORD", "admin123")
         admin_email = os.getenv("ADMIN_EMAIL", "admin@fitness.local")
 
-        # Check if admin exists
-        admin = db.query(User).filter(User.username == admin_username).first()
-        if admin:
-            logger.info("Admin user already exists")
-            return
-        
+        # Check if admin exists by username or email
+        admin = db.query(User).filter(
+            or_(User.username == admin_username, User.email == admin_email)
+        ).first()
+
         # Hash password from env
         password_hash = bcrypt.hashpw(admin_password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
-        
-        admin = User(
-            username=admin_username,
-            email=admin_email,
-            password_hash=password_hash,
-            role="admin",
-            is_active=True
-        )
-        db.add(admin)
-        db.commit()
-        logger.info(f"Created default admin user (username: {admin_username})")
+
+        if admin:
+            updates = []
+            if admin.username != admin_username:
+                admin.username = admin_username
+                updates.append("username")
+            if admin.email != admin_email:
+                admin.email = admin_email
+                updates.append("email")
+            admin.password_hash = password_hash
+            admin.role = "admin"
+            admin.is_active = True
+            db.commit()
+            logger.info(
+                "Updated existing admin user ({}), changed: {}".format(
+                    admin.username,
+                    ", ".join(updates) if updates else "password"
+                )
+            )
+        else:
+            admin = User(
+                username=admin_username,
+                email=admin_email,
+                password_hash=password_hash,
+                role="admin",
+                is_active=True
+            )
+            db.add(admin)
+            db.commit()
+            logger.info(f"Created default admin user (username: {admin_username})")
     except Exception as e:
         logger.error(f"Error creating default admin user: {e}")
         db.rollback()
