@@ -1,5 +1,6 @@
 """Website contact form router."""
 import json
+import os
 import re
 import uuid
 from datetime import datetime
@@ -372,14 +373,29 @@ async def submit_contact_form(form_data: ContactFormRequest):
 
         return response
         
+    except HTTPException:
+        # Пробрасываем HTTP исключения как есть
+        db.rollback()
+        raise
     except Exception as e:
+        # Логируем полную информацию об ошибке
         logger.error(f"Error processing contact form: {e}")
         import traceback
-        traceback.print_exc()
+        error_trace = traceback.format_exc()
+        logger.error(f"Traceback: {error_trace}")
         db.rollback()
+        
+        # Возвращаем более информативное сообщение об ошибке
+        error_detail = str(e) if str(e) else "Неизвестная ошибка"
+        # В production не показываем технические детали, но логируем их
+        if "ENVIRONMENT" in os.environ and os.environ.get("ENVIRONMENT") == "production":
+            user_message = "Произошла ошибка при отправке заявки. Пожалуйста, попробуйте позже или свяжитесь с нами напрямую."
+        else:
+            user_message = f"Ошибка: {error_detail}"
+        
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Произошла ошибка при отправке заявки. Пожалуйста, попробуйте позже."
+            detail=user_message
         )
     finally:
         db.close()
