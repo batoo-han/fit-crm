@@ -40,8 +40,16 @@ docker-compose -f docker-compose.production.yml up -d api
 docker logs crm_api_prod --follow
 ```
 
-Теперь вы должны увидеть детальные логи:
+Теперь вы должны увидеть детальные DEBUG логи:
 ```
+DEBUG: Before importing routers...
+DEBUG: Routers imported successfully
+DEBUG: init_crm imported successfully
+DEBUG: Creating FastAPI app...
+DEBUG: FastAPI app created successfully
+DEBUG: lifespan() called!
+DEBUG: Logger configured successfully
+DEBUG: About to log 'Starting CRM API...'
 Starting CRM API...
 Calling init_crm()...
 Initializing CRM system...
@@ -50,7 +58,11 @@ Starting ensure_optional_columns()...
 ...
 ```
 
-**Определите, на каком шаге зависает процесс.**
+**Определите, на каком DEBUG сообщении зависает процесс:**
+- Если зависает после "Routers imported successfully" - проблема в создании FastAPI app
+- Если зависает после "FastAPI app created successfully" - проблема в вызове lifespan
+- Если зависает после "lifespan() called!" - проблема в настройке логирования
+- Если зависает после "Starting CRM API..." - проблема в init_crm()
 
 ### Шаг 3: Возможные причины зависания
 

@@ -17,13 +17,26 @@ from fastapi.staticfiles import StaticFiles
 # Создаём директорию для логов, если её нет
 os.makedirs("logs", exist_ok=True)
 
+# Логируем до импорта роутеров, чтобы понять, где зависает
+print("DEBUG: Before importing routers...")
+logger.info("DEBUG: Before importing routers...")
+
 from crm_api.routers import auth, clients, pipeline, programs, progress, actions, contacts, analytics, website, website_chat, website_settings, reminders, payments, faq, sales_scenarios, uploads, pipelines, marketing, integrations_amocrm, social_posts, promocodes
+
+print("DEBUG: Routers imported successfully")
+logger.info("DEBUG: Routers imported successfully")
+
 from database.init_crm import init_crm
+
+print("DEBUG: init_crm imported successfully")
+logger.info("DEBUG: init_crm imported successfully")
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Lifespan events - initialize on startup."""
+    print("DEBUG: lifespan() called!")
+    logger.info("DEBUG: lifespan() called!")
     # Настраиваем логирование для API
     import sys
     logger.remove()  # Удаляем стандартный handler
@@ -33,14 +46,21 @@ async def lifespan(app: FastAPI):
         level="INFO",
         colorize=True
     )
-    logger.add(
-        "logs/api.log",
-        rotation="10 MB",
-        level="INFO",
-        format="{time:YYYY-MM-DD HH:mm:ss} | {level: <8} | {name}:{function} - {message}"
-    )
+    try:
+        logger.add(
+            "logs/api.log",
+            rotation="10 MB",
+            level="INFO",
+            format="{time:YYYY-MM-DD HH:mm:ss} | {level: <8} | {name}:{function} - {message}"
+        )
+        print("DEBUG: Logger configured successfully")
+    except Exception as e:
+        print(f"DEBUG: Error configuring logger: {e}")
+        logger.warning(f"Could not configure file logger: {e}")
     
+    print("DEBUG: About to log 'Starting CRM API...'")
     logger.info("Starting CRM API...")
+    print("DEBUG: 'Starting CRM API...' logged successfully")
     # Initialize CRM database
     try:
         logger.info("Calling init_crm()...")
@@ -57,12 +77,18 @@ async def lifespan(app: FastAPI):
     logger.info("Shutting down CRM API...")
 
 
+print("DEBUG: Creating FastAPI app...")
+logger.info("DEBUG: Creating FastAPI app...")
+
 app = FastAPI(
     title="Fitness Trainer CRM API",
     description="CRM system for managing fitness training clients, programs, and sales pipeline",
     version="1.0.0",
     lifespan=lifespan
 )
+
+print("DEBUG: FastAPI app created successfully")
+logger.info("DEBUG: FastAPI app created successfully")
 
 # Кастомный обработчик для null origin (file:// протокол) - должен быть ПЕРЕД CORS middleware
 from fastapi import Request
