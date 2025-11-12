@@ -23,9 +23,9 @@ services:
     networks:
       - app_net
     restart: unless-stopped
-    # Не пробрасываем порты наружу - nginx будет проксировать через внутреннюю сеть
-    expose:
-      - "8000"
+    # Пробрасываем порт на локальный интерфейс для nginx на хосте
+    ports:
+      - "127.0.0.1:8001:8000"
     healthcheck:
       test: ["CMD", "python", "-c", "import socket; s=socket.socket(); s.settimeout(3); s.connect(('127.0.0.1', 8000)); s.close()"]
       interval: 30s
