@@ -40,6 +40,16 @@ ssl_certificate /etc/ssl/batoohan.ru.crt;
 ssl_certificate_key /etc/ssl/batoohan.ru.key;
 ```
 
+### 4. Отсутствие health-check для nginx
+**Проблема**: `https://www.batoohan.ru/api/health` возвращал 404, хотя nginx проксирует `/api/`.
+
+**Решение**: Добавлен эндпоинт `GET /api/health` в `crm_api/main.py`.
+
+### 5. Telegram-бот и фоновая авторассылка не запускались
+**Проблема**: Docker Compose не запускал `bot.py`, из-за чего бот и регулярные задачи (рассылки, проверки платежей) были недоступны.
+
+**Решение**: В `docker-compose.production.yml` добавлен сервис `bot`, использующий тот же образ, но команду `python bot.py`.
+
 ## Инструкция по применению исправлений
 
 ### На сервере выполните следующие шаги:
@@ -64,7 +74,7 @@ sudo systemctl reload nginx
 
 4. **Пересоберите и запустите контейнеры**:
 ```bash
-docker-compose -f docker-compose.production.yml build frontend
+docker-compose -f docker-compose.production.yml build
 docker-compose -f docker-compose.production.yml up -d
 ```
 
@@ -78,6 +88,9 @@ docker logs crm_api_prod
 
 # Логи nginx на хосте
 sudo tail -f /var/log/nginx/batoohan.ru.error.log
+
+# Логи Telegram-бота
+docker logs crm_bot_prod
 ```
 
 6. **Проверьте доступность**:
@@ -89,9 +102,14 @@ sudo tail -f /var/log/nginx/batoohan.ru.error.log
 
 ### Проверка API:
 ```bash
-curl -X POST https://batoohan.ru/api/website/contact \
+curl -X POST https://www.batoohan.ru/api/website/contact \
   -H "Content-Type: application/json" \
   -d '{"name":"Test","email":"test@example.com"}'
+```
+
+### Проверка health-check:
+```bash
+curl https://www.batoohan.ru/api/health
 ```
 
 ### Проверка админ-панели:
@@ -104,5 +122,6 @@ curl -X POST https://batoohan.ru/api/website/contact \
 
 - Убедитесь, что директория `/var/www/dnk` существует и содержит файлы сайта
 - Убедитесь, что порты 8001 и 8080 не заняты другими процессами
+- При первом запуске Telegram-бота проверьте, что в `.env` заполнены `TELEGRAM_BOT_TOKEN`, `ADMIN_CHAT_ID` и другие переменные
 - Проверьте, что SSL сертификаты настроены правильно (или используйте самоподписанные для тестирования)
 

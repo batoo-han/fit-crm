@@ -56,6 +56,27 @@ services:
       retries: 5
       start_period: 40s
 
+  bot:
+    build:
+      context: .
+      dockerfile: Dockerfile.api
+    container_name: crm_bot_prod
+    command: ["python", "bot.py"]
+    env_file:
+      - .env
+    environment:
+      - DATABASE_URL=sqlite:////data/crm.db
+      - LOG_LEVEL=INFO
+    volumes:
+      - crm_data:/data
+      - crm_logs:/app/logs
+      - ./uploads:/app/uploads
+    depends_on:
+      - api
+    networks:
+      - app_net
+    restart: unless-stopped
+
 volumes:
   crm_data:
     driver: local

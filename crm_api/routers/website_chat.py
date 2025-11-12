@@ -250,16 +250,23 @@ async def chat_with_llm(message: ChatMessage):
         
         # Генерируем ответ через AI сервис
         # TODO: Поддержка выбора провайдера и модели из настроек
-        response_text = await ai_service.generate_response(
-            prompt=full_prompt,
-            system_prompt=system_prompt,
-            max_tokens=max_tokens,
-            temperature=temperature
-        )
-        
+        try:
+            response_text = await ai_service.generate_response(
+                prompt=full_prompt,
+                system_prompt=system_prompt,
+                max_tokens=max_tokens,
+                temperature=temperature
+            )
+        except Exception as ai_error:
+            logger.error(f"AI provider error: {ai_error}")
+            response_text = (
+                "Сейчас я не могу получить ответ от AI-сервиса. "
+                "Пожалуйста, опишите ваш вопрос и оставьте контакт — тренер свяжется с вами."
+            )
+ 
         # Генерируем session_id если не передан
         session_id = message.session_id or str(uuid.uuid4())
-        
+ 
         logger.info(f"Chat message processed: session={session_id[:8]}...")
         
         return ChatResponse(

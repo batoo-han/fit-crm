@@ -15,6 +15,7 @@ interface AuthContextType {
   login: (username: string, password: string) => Promise<void>
   logout: () => void
   isAuthenticated: boolean
+  isLoading: boolean
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined)
@@ -22,12 +23,14 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined)
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null)
   const [token, setToken] = useState<string | null>(localStorage.getItem('token'))
+  const [isLoading, setIsLoading] = useState<boolean>(true)
 
   const logout = () => {
     setToken(null)
     setUser(null)
     localStorage.removeItem('token')
     delete api.defaults.headers.common['Authorization']
+    setIsLoading(false)
   }
 
   const fetchUser = async () => {
@@ -37,15 +40,19 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     } catch (error) {
       console.error('Failed to fetch user:', error)
       logout()
+    } finally {
+      setIsLoading(false)
     }
   }
 
   useEffect(() => {
     if (token) {
       api.defaults.headers.common['Authorization'] = `Bearer ${token}`
+      setIsLoading(true)
       fetchUser()
     } else {
       setUser(null)
+      setIsLoading(false)
     }
   }, [token])
 
@@ -62,6 +69,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setUser(userData)
       localStorage.setItem('token', access_token)
       api.defaults.headers.common['Authorization'] = `Bearer ${access_token}`
+      setIsLoading(false)
     } catch (error: any) {
       console.error('Login error:', error)
       throw error
@@ -75,7 +83,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         token,
         login,
         logout,
-        isAuthenticated: !!token && !!user,
+        isAuthenticated: !!token,
+        isLoading,
       }}
     >
       {children}
