@@ -43,9 +43,16 @@ async def lifespan(app: FastAPI):
     logger.info("Starting CRM API...")
     # Initialize CRM database
     try:
+        logger.info("Calling init_crm()...")
         init_crm()
+        logger.info("init_crm() completed successfully")
     except Exception as e:
         logger.error(f"Error initializing CRM: {e}")
+        import traceback
+        logger.error(f"Traceback: {traceback.format_exc()}")
+        # Не блокируем запуск API, даже если инициализация не удалась
+        logger.warning("Continuing API startup despite initialization errors...")
+    logger.info("Application startup complete")
     yield
     logger.info("Shutting down CRM API...")
 

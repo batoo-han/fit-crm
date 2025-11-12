@@ -47,13 +47,19 @@ def create_tables():
 def ensure_optional_columns():
     """Ensure newly added columns exist when upgrading in-place."""
     try:
+        logger.info("Starting ensure_optional_columns()...")
         inspector = inspect(engine)
+        logger.info("Inspector created successfully")
 
         def table_exists(table: str) -> bool:
             """Check if table exists."""
             try:
-                return table in inspector.get_table_names()
-            except Exception:
+                logger.debug(f"Checking if table {table} exists...")
+                tables = inspector.get_table_names()
+                logger.debug(f"Found {len(tables)} tables")
+                return table in tables
+            except Exception as e:
+                logger.warning(f"Error checking table {table}: {e}")
                 return False
 
         def ensure(table: str, column: str, ddl: str):
@@ -82,9 +88,12 @@ def ensure_optional_columns():
                     logger.error(f"Failed to add column {table}.{column}: {e}")
                     raise
 
+        logger.info("Ensuring clients.email column...")
         ensure("clients", "email", "VARCHAR(255)")
+        logger.info("clients.email check completed")
         
         # Migrate metadata to payment_metadata if needed
+        logger.info("Checking payments table for metadata migration...")
         if table_exists("payments"):
             try:
                 columns = [col["name"] for col in inspector.get_columns("payments")]
@@ -112,13 +121,22 @@ def ensure_optional_columns():
                 logger.warning(f"Could not migrate metadata column: {e}")
         
         # Ensure pipeline_id column exists in pipeline_stages (for multi-pipeline support)
+        logger.info("Ensuring pipeline_stages.pipeline_id column...")
         ensure("pipeline_stages", "pipeline_id", "INTEGER")
+        logger.info("pipeline_stages.pipeline_id check completed")
         
         # Ensure pipeline_id column exists in client_pipelines (for multi-pipeline support)
+        logger.info("Ensuring client_pipelines.pipeline_id column...")
         ensure("client_pipelines", "pipeline_id", "INTEGER")
+        logger.info("client_pipelines.pipeline_id check completed")
+        
+        logger.info("ensure_optional_columns() completed successfully")
             
     except Exception as e:
         logger.error(f"Error ensuring optional columns: {e}")
+        import traceback
+        logger.error(f"Traceback: {traceback.format_exc()}")
+        raise
 
 
 def create_default_pipeline_stages():
@@ -216,22 +234,48 @@ def create_default_admin_user():
 def init_crm():
     """Initialize CRM system - create tables and default data."""
     logger.info("Initializing CRM system...")
-    create_tables()
-    create_default_pipeline_stages()
-    create_default_admin_user()
+    try:
+        logger.info("Step 1: Creating tables...")
+        create_tables()
+        logger.info("Step 1 completed: Tables created")
+    except Exception as e:
+        logger.error(f"Error in create_tables: {e}")
+        raise
+    
+    try:
+        logger.info("Step 2: Creating default pipeline stages...")
+        create_default_pipeline_stages()
+        logger.info("Step 2 completed: Pipeline stages created")
+    except Exception as e:
+        logger.error(f"Error in create_default_pipeline_stages: {e}")
+        # Не критично, продолжаем
+    
+    try:
+        logger.info("Step 3: Creating default admin user...")
+        create_default_admin_user()
+        logger.info("Step 3 completed: Admin user created/updated")
+    except Exception as e:
+        logger.error(f"Error in create_default_admin_user: {e}")
+        # Не критично, продолжаем
     
     # Initialize default FAQ and sales scenarios
     try:
+        logger.info("Step 4: Creating default FAQ...")
         from database.init_faq_data import create_default_faq
         create_default_faq()
+        logger.info("Step 4 completed: FAQ created")
     except Exception as e:
         logger.error(f"Error creating default FAQ: {e}")
+        # Не критично, продолжаем
     
     try:
+        logger.info("Step 5: Creating default sales scenarios...")
         from database.init_sales_scenarios import create_default_sales_scenarios
         create_default_sales_scenarios()
+        logger.info("Step 5 completed: Sales scenarios created")
     except Exception as e:
         logger.error(f"Error creating default sales scenarios: {e}")
+        # Не критично, продолжаем
     
     logger.info("CRM system initialized successfully")
 
