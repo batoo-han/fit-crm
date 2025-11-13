@@ -36,6 +36,12 @@ const Programs = () => {
     <div>
       <div className="flex justify-between items-center mb-8">
         <h1 className="text-3xl font-bold text-gray-900">Программы тренировок</h1>
+        <Link
+          to="/program-cleanup"
+          className="px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700"
+        >
+          Очистка программ
+        </Link>
       </div>
 
       <div className="mb-6 flex gap-2">

@@ -8,13 +8,13 @@ from typing import List
 
 from aiogram import Bot
 from aiogram.exceptions import TelegramBadRequest
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, HTTPException, status, Depends
 from pydantic import BaseModel, EmailStr
 from sqlalchemy.orm import Session
 from sqlalchemy import or_
 
 from database.db import get_db_session
-from database.models import WebsiteContact, Client, Payment
+from database.models import WebsiteContact, Client, Payment, WebsiteSettings
 from database.models_crm import (
     PipelineStage,
     ClientPipeline,
@@ -699,4 +699,70 @@ async def initiate_purchase(payload: PurchaseRequest):
         )
     finally:
         db.close()
+
+
+@router.get("/settings/public")
+async def get_public_widget_settings(
+    category: str | None = None,
+    db: Session = Depends(get_db_session)
+):
+    """Get public website settings (no authentication required)."""
+    import json
+    from typing import Dict, Any
+    
+    query = db.query(WebsiteSettings)
+    if category:
+        query = query.filter(WebsiteSettings.category == category)
+    
+    settings_list = query.all()
+    
+    # Вспомогательная функция нормализации ключей
+    def normalize_key(cat: str | None, key: str) -> tuple[str, int]:
+        if not key:
+            return "", 0
+        if not cat or cat == "general":
+            return key, len(key)
+        prefix = f"{cat}_"
+        normalized = key
+        while normalized.startswith(prefix):
+            normalized = normalized[len(prefix):]
+        if not normalized:
+            normalized = key
+        return normalized, len(key)
+
+    # Группируем по категориям
+    settings_dict: Dict[str, Dict[str, Any]] = {}
+    key_lengths: Dict[str, Dict[str, int]] = {}
+    categories = set()
+    
+    for setting in settings_list:
+        cat = setting.category or "general"
+        categories.add(cat)
+        
+        if cat not in settings_dict:
+            settings_dict[cat] = {}
+            key_lengths[cat] = {}
+        
+        # Парсим значение в зависимости от типа
+        value = setting.setting_value
+        if setting.setting_type == "json":
+            try:
+                value = json.loads(setting.setting_value or "{}")
+            except:
+                value = setting.setting_value
+        elif setting.setting_type == "number":
+            value = float(setting.setting_value) if setting.setting_value else None
+        elif setting.setting_type == "boolean":
+            value = setting.setting_value == "true"
+        
+        normalized_key, original_length = normalize_key(cat, setting.setting_key)
+        stored_length = key_lengths[cat].get(normalized_key)
+        if stored_length is None or original_length <= stored_length:
+            settings_dict[cat][normalized_key] = value
+            key_lengths[cat][normalized_key] = original_length
+    
+    return {
+        "settings": settings_dict,
+        "categories": list(categories)
+    }
 

@@ -1,6 +1,7 @@
 import { useState, useMemo } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api } from '../services/api'
+import { useModal } from '../components/ui/modal/ModalContext'
 
 type FaqItem = {
   id: number
@@ -62,6 +63,7 @@ const AIAgentSettings = () => {
   const [editingScenario, setEditingScenario] = useState<SalesScenario | null>(null)
 
   const queryClient = useQueryClient()
+  const { showModal } = useModal()
 
   const { data: faqList, isLoading: faqLoading, isError: faqError } = useQuery({
     queryKey: ['faq'],
@@ -187,7 +189,11 @@ const AIAgentSettings = () => {
       }
       await createFaqMutation.mutateAsync(payload)
     }
-    alert('FAQ импортированы')
+    showModal({
+      title: 'Импорт завершён',
+      message: 'FAQ импортированы',
+      tone: 'success',
+    })
   }
 
   const handleImportScenarios = async (file: File) => {
@@ -206,7 +212,11 @@ const AIAgentSettings = () => {
       }
       await createScenarioMutation.mutateAsync(payload)
     }
-    alert('Сценарии импортированы')
+    showModal({
+      title: 'Импорт завершён',
+      message: 'Сценарии импортированы',
+      tone: 'success',
+    })
   }
 
   const filteredFaqList = useMemo(() => {
@@ -247,7 +257,11 @@ const AIAgentSettings = () => {
       is_active: faqForm.is_active,
     }
     if (!faqForm.question || !faqForm.answer) {
-      alert('Вопрос и ответ обязательны')
+      showModal({
+        title: 'Заполните все поля',
+        message: 'Вопрос и ответ обязательны',
+        tone: 'error',
+      })
       return
     }
     if (faqForm.id) {
@@ -259,7 +273,11 @@ const AIAgentSettings = () => {
 
   const handleScenarioSubmit = () => {
     if (!scenarioForm.name || !scenarioForm.message_template) {
-      alert('Название и шаблон сообщения обязательны')
+      showModal({
+        title: 'Заполните все поля',
+        message: 'Название и шаблон сообщения обязательны',
+        tone: 'error',
+      })
       return
     }
     const payload = {

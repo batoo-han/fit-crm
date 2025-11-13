@@ -4,10 +4,12 @@ import { api } from '../services/api'
 import { useState, useMemo, useEffect } from 'react'
 import EditableTable from '../components/EditableTable'
 import React from 'react'
+import { useModal } from '../components/ui/modal/ModalContext'
 
 const ProgramView = () => {
   const { id } = useParams<{ id: string }>()
   const queryClient = useQueryClient()
+  const { showModal } = useModal()
   const [selectedWeek, setSelectedWeek] = useState<number | null>(null)
 
   const { data: program, isLoading } = useQuery({
@@ -243,9 +245,20 @@ const ProgramView = () => {
               try {
                 const resp = await api.get(`/programs/${id}/export-pdf`)
                 const url = resp.data?.url
-                if (url) window.open(url, '_blank')
-              } catch {
-                alert('Не удалось экспортировать PDF')
+                if (url) {
+                  // Используем полный URL к API для обхода React Router
+                  // В development используем localhost:8009, в production - текущий домен
+                  const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 
+                    (import.meta.env.DEV ? 'http://localhost:8009' : window.location.origin)
+                  const fullUrl = `${apiBaseUrl}${url}`
+                  window.open(fullUrl, '_blank')
+                }
+              } catch (error: any) {
+                showModal({
+                  title: 'Не удалось экспортировать PDF',
+                  message: error?.response?.data?.detail || 'Попробуйте повторить позже.',
+                  tone: 'error',
+                })
               }
             }}
             className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-100"
@@ -267,9 +280,19 @@ const ProgramView = () => {
                 const results = resp.data?.results || {}
                 const tg = results.telegram ? (results.telegram.success ? 'Telegram: отправлено' : `Telegram: ${results.telegram.error || 'ошибка'}`) : null
                 const em = results.email ? (results.email.success ? 'Email: отправлено' : `Email: ${results.email.error || 'ошибка'}`) : null
-                alert([tg, em].filter(Boolean).join('\n') || 'Готово')
-              } catch {
-                alert('Не удалось отправить программу')
+                const summary = [tg, em].filter(Boolean).join('\n') || 'Готово'
+                const hasErrors = [tg, em].some((line) => line && line.toLowerCase().includes('ошибка'))
+                showModal({
+                  title: 'Результат отправки',
+                  message: summary,
+                  tone: hasErrors ? 'warning' : 'success',
+                })
+              } catch (error: any) {
+                showModal({
+                  title: 'Не удалось отправить программу',
+                  message: error?.response?.data?.detail || 'Попробуйте позже или отправьте вручную.',
+                  tone: 'error',
+                })
               }
             }}
             className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-100"
@@ -333,9 +356,17 @@ const ProgramView = () => {
                   try {
                     await api.post(`/programs/${id}/versions`)
                     // refresh page data next time if needed
-                    alert('Снимок версии сохранён')
-                  } catch {
-                    alert('Не удалось создать снимок')
+                    showModal({
+                      title: 'Снимок сохранён',
+                      message: 'Снимок версии сохранён',
+                      tone: 'success',
+                    })
+                  } catch (error: any) {
+                    showModal({
+                      title: 'Не удалось создать снимок',
+                      message: error?.response?.data?.detail || 'Попробуйте позже.',
+                      tone: 'error',
+                    })
                   }
                 }}
                 className="px-3 py-1 rounded-lg text-sm border border-gray-300 hover:bg-gray-100"

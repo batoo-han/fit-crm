@@ -1,8 +1,8 @@
-import { useParams, useNavigate } from 'react-router-dom'
+import { useParams, useNavigate, Link } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api } from '../services/api'
 import { useState, useEffect } from 'react'
-import { Link } from 'react-router-dom'
+import { useModal } from '../components/ui/modal/ModalContext'
 
 interface Client {
   id: number
@@ -26,6 +26,7 @@ const ClientDetail = () => {
   const queryClient = useQueryClient()
   const [isEditing, setIsEditing] = useState(false)
   const [formData, setFormData] = useState<Partial<Client>>({})
+  const { showModal } = useModal()
 
   const { data: client, isLoading } = useQuery<Client>({
     queryKey: ['client', id],
@@ -586,9 +587,19 @@ const ClientDetail = () => {
                 try {
                   const res = await api.post('/integrations/amocrm/push-client', { client_id: Number(id) })
                   const cid = res.data?.contact_id
-                  alert(cid ? `Клиент выгружен в amoCRM. ID контакта: ${cid}` : 'Клиент выгружен в amoCRM (если интеграция включена).')
+                showModal({
+                  title: 'amoCRM',
+                  message: cid
+                    ? `Клиент выгружен в amoCRM. ID контакта: ${cid}`
+                    : 'Клиент выгружен в amoCRM (если интеграция включена).',
+                  tone: 'success',
+                })
                 } catch (e: any) {
-                  alert('Не удалось выгрузить клиента: ' + (e?.response?.data?.detail || 'ошибка'))
+                showModal({
+                  title: 'Не удалось выгрузить',
+                  message: 'Не удалось выгрузить клиента: ' + (e?.response?.data?.detail || 'ошибка'),
+                  tone: 'error',
+                })
                 }
               }}
               className="px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700"

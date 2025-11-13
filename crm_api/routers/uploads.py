@@ -1,7 +1,7 @@
 """Uploads router for handling media uploads (images, documents)."""
 import os
 import uuid
-from fastapi import APIRouter, UploadFile, File, HTTPException, status
+from fastapi import APIRouter, UploadFile, File, Form, HTTPException, status
 from fastapi.responses import JSONResponse
 from loguru import logger
 
@@ -19,8 +19,17 @@ def ensure_upload_dir() -> str:
 
 
 @router.post("", status_code=status.HTTP_201_CREATED)
-async def upload_file(file: UploadFile = File(...)):
-    """Handle file upload and return public URL."""
+async def upload_file(
+    file: UploadFile = File(...),
+    file_type: str = Form(None)
+):
+    """
+    Handle file upload and return public URL.
+    
+    Args:
+        file: File to upload
+        file_type: Type of file (logo_widget, logo_site, etc.) for meaningful naming
+    """
     try:
         filename = file.filename or ""
         _, ext = os.path.splitext(filename.lower())
@@ -37,14 +46,32 @@ async def upload_file(file: UploadFile = File(...)):
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail=f"Файл слишком большой (> {MAX_FILE_SIZE_MB}MB)",
             )
-        # Save with UUID name to avoid collisions
+        
         upload_dir = ensure_upload_dir()
-        new_name = f"{uuid.uuid4().hex}{ext}"
-        target_path = os.path.join(upload_dir, new_name)
+        
+        # Generate meaningful filename based on file_type
+        if file_type in ["logo_widget", "logo_site"]:
+            # For logos, use simple name: logo_widget.ext or logo_site.ext
+            # If file with same name exists, add timestamp
+            base_name = file_type
+            new_name = f"{base_name}{ext}"
+            target_path = os.path.join(upload_dir, new_name)
+            
+            # If file exists, add timestamp to avoid overwriting
+            if os.path.exists(target_path):
+                from datetime import datetime
+                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                new_name = f"{base_name}_{timestamp}{ext}"
+                target_path = os.path.join(upload_dir, new_name)
+        else:
+            # For other files, use UUID to avoid collisions
+            new_name = f"{uuid.uuid4().hex}{ext}"
+            target_path = os.path.join(upload_dir, new_name)
+        
         with open(target_path, "wb") as f:
             f.write(content)
         public_url = f"/uploads/{new_name}"
-        logger.info(f"Uploaded file saved to {target_path} -> {public_url}")
+        logger.info(f"Uploaded file saved to {target_path} -> {public_url} (type: {file_type})")
         return JSONResponse({"url": public_url, "filename": filename})
     except HTTPException:
         raise

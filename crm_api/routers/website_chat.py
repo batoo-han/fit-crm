@@ -27,6 +27,7 @@ class ChatMessage(BaseModel):
     message: str
     session_id: Optional[str] = None  # Для отслеживания сессии
     conversation_history: Optional[List[Dict[str, str]]] = None  # История диалога
+    conversation_summary: Optional[str] = None  # Краткая сводка предыдущего диалога
 
 
 class ChatResponse(BaseModel):
@@ -35,6 +36,7 @@ class ChatResponse(BaseModel):
     session_id: str
     step: Optional[int] = None  # Текущий шаг опросника (1-11)
     completed: bool = False  # Завершен ли опросник
+    conversation_summary: Optional[str] = None  # Обновленная сводка диалога
 
 
 def normalize_llm_settings(settings: Dict[str, Any]) -> Dict[str, Any]:
@@ -234,10 +236,57 @@ async def chat_with_llm(message: ChatMessage):
         temperature = widget_settings.get("temperature", 0.7)
         max_tokens = widget_settings.get("max_tokens", 2000)
         
+        history_limit = int(widget_settings.get("history_limit", 30) or 30)
+        history_limit = max(1, min(50, history_limit))
+
+        conversation_history = message.conversation_history or []
+        conversation_summary = message.conversation_summary or ""
+        updated_summary = conversation_summary
+
+        # Если история слишком длинная, суммируем «хвост»
+        if conversation_history and len(conversation_history) > history_limit:
+            old_messages = conversation_history[:-history_limit]
+            recent_messages = conversation_history[-history_limit:]
+            if old_messages:
+                summary_context = ""
+                for msg in old_messages:
+                    role = msg.get("role", "user")
+                    content = msg.get("content", "")
+                    if not content:
+                        continue
+                    prefix = "Клиент" if role == "user" else "Ассистент"
+                    summary_context += f"{prefix}: {content}\n"
+
+                summary_prompt = (
+                    "Ты — ассистент-аналитик. На входе есть текущая краткая сводка разговора и блок новых сообщений.\n"
+                    "Нужно обновить сводку, сохранив ключевые факты, цели клиента, договорённости и важные детали.\n"
+                    "Ответ должен быть компактным, максимум 120 слов, без приветствий и выводов.\n\n"
+                    f"Текущая сводка:\n{conversation_summary or 'нет данных'}\n\n"
+                    f"Новые сообщения:\n{summary_context}\n\n"
+                    "Выведи ОБНОВЛЕННУЮ сводку."
+                )
+
+                try:
+                    summary_result = await ai_service.generate_response(
+                        prompt=summary_prompt,
+                        system_prompt="Ты сжимаешь диалог до краткой сводки. Не добавляй от себя ничего лишнего.",
+                        max_tokens=350,
+                        temperature=0.2,
+                    )
+                    updated_summary = summary_result.strip()
+                except Exception as summary_error:
+                    logger.warning(f"Failed to generate conversation summary: {summary_error}")
+                    updated_summary = conversation_summary
+
+            conversation_history = conversation_history[-history_limit:]
+
         # Формируем контекст из истории диалога
         context = ""
-        if message.conversation_history:
-            for msg in message.conversation_history[-10:]:  # Последние 10 сообщений
+        if updated_summary:
+            context += f"Краткая сводка предыдущего общения:\n{updated_summary}\n\n"
+
+        if conversation_history:
+            for msg in conversation_history[-history_limit:]:
                 role = msg.get("role", "user")
                 content = msg.get("content", "")
                 if role == "user":
@@ -272,7 +321,8 @@ async def chat_with_llm(message: ChatMessage):
         return ChatResponse(
             response=response_text,
             session_id=session_id,
-            completed=False  # TODO: Определять завершенность опросника
+            completed=False,  # TODO: Определять завершенность опросника
+            conversation_summary=updated_summary or None,
         )
         
     except Exception as e:

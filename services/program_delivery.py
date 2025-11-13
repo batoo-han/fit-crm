@@ -6,11 +6,13 @@ import requests
 import smtplib
 from email.message import EmailMessage
 from typing import List, Optional, Dict, Any
+from datetime import datetime
 
 from loguru import logger
 
 from config import TELEGRAM_BOT_TOKEN
 from database.models import TrainingProgram, Client
+from database.db import get_db_session
 from services.pdf_generator import PDFGenerator
 
 
@@ -67,6 +69,8 @@ def deliver_program_to_client(
                     )
                 if resp.ok:
                     results["telegram"] = {"success": True}
+                    # Mark program as sent
+                    _mark_program_as_sent(program.id)
                 else:
                     results["telegram"] = {"success": False, "error": resp.text}
             except Exception as exc:
@@ -105,10 +109,28 @@ def deliver_program_to_client(
                         server.login(smtp_user, smtp_password)
                         server.send_message(msg)
                     results["email"] = {"success": True}
+                    # Mark program as sent
+                    _mark_program_as_sent(program.id)
                 except Exception as exc:
                     logger.error(f"E-mail delivery error: {exc}")
                     results["email"] = {"success": False, "error": str(exc)}
 
     return results
+
+
+def _mark_program_as_sent(program_id: int):
+    """Mark program as sent to client."""
+    try:
+        db = next(get_db_session())
+        try:
+            program = db.query(TrainingProgram).filter(TrainingProgram.id == program_id).first()
+            if program and not program.sent_at:
+                program.sent_at = datetime.utcnow()
+                db.commit()
+                logger.info(f"Marked program {program_id} as sent")
+        finally:
+            db.close()
+    except Exception as e:
+        logger.error(f"Error marking program as sent: {e}")
 
 

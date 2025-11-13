@@ -9,7 +9,7 @@ from database.db import get_db_session, engine
 from database.models import Base
 from database.models_crm import (
     PipelineStage, User, ClientPipeline, ClientAction,
-    ClientContact, ProgressJournal, ClientBotLink, Reminder, FAQ, SalesScenario
+    ClientContact, ProgressJournal, ClientBotLink, Reminder, FAQ, SalesScenario, ProgramTemplate
 )
 from sqlalchemy import inspect, text, or_
 from loguru import logger
@@ -28,6 +28,7 @@ def create_tables():
             PipelineStage, User, ClientPipeline, ClientAction,
             ClientContact, ProgressJournal, ClientBotLink, Reminder, FAQ, SalesScenario, SalesPipeline,
             MarketingCampaign, CampaignAudience, CampaignMessage, CampaignRun, ClientChannelPreference, CampaignDelivery,
+            ProgramTemplate, ProgramHistory,
             SocialPost, PromoCode, PromoUsage, SocialPostTemplate
         )
         
@@ -92,6 +93,14 @@ def ensure_optional_columns():
         ensure("clients", "email", "VARCHAR(255)")
         logger.info("clients.email check completed")
         
+        # Ensure payments table has promo_code and related columns
+        if table_exists("payments"):
+            logger.info("Ensuring payments table columns...")
+            ensure("payments", "promo_code", "VARCHAR(100)")
+            ensure("payments", "discount_amount", "FLOAT")
+            ensure("payments", "final_amount", "FLOAT")
+            logger.info("payments table columns check completed")
+        
         # Migrate metadata to payment_metadata if needed
         logger.info("Checking payments table for metadata migration...")
         if table_exists("payments"):
@@ -129,6 +138,12 @@ def ensure_optional_columns():
         logger.info("Ensuring client_pipelines.pipeline_id column...")
         ensure("client_pipelines", "pipeline_id", "INTEGER")
         logger.info("client_pipelines.pipeline_id check completed")
+        
+        # Ensure training_programs.sent_at column
+        if table_exists("training_programs"):
+            logger.info("Ensuring training_programs.sent_at column...")
+            ensure("training_programs", "sent_at", "DATETIME")
+            logger.info("training_programs.sent_at check completed")
         
         logger.info("ensure_optional_columns() completed successfully")
             
@@ -231,6 +246,78 @@ def create_default_admin_user():
         db.close()
 
 
+def create_default_program_templates():
+    """Create default program templates if they don't exist."""
+    try:
+        db = get_db_session()
+        try:
+            # Check if default footer template exists
+            footer_template = db.query(ProgramTemplate).filter(
+                ProgramTemplate.template_type == "footer",
+                ProgramTemplate.is_default == True
+            ).first()
+            
+            if not footer_template:
+                default_footer = ProgramTemplate(
+                    name="Разъяснения по использованию программы (по умолчанию)",
+                    template_type="footer",
+                    content="""ИНСТРУКЦИЯ ПО ИСПОЛЬЗОВАНИЮ ПРОГРАММЫ ТРЕНИРОВОК
+
+1. ОРГАНИЗАЦИЯ ТРЕНИРОВОЧНОГО ПРОЦЕССА
+
+• Следуйте программе строго по порядку недель и дней
+• Записывайте максимальный рабочий вес в колонку "Вес*" после каждой тренировки
+• Отдых между подходами: 60-90 секунд для новичков, 90-120 секунд для продвинутых
+• Между тренировками должен быть минимум 1 день отдыха
+
+2. ТЕХНИКА ВЫПОЛНЕНИЯ
+
+• Приоритет - правильная техника, а не вес
+• Если упражнение вызывает боль - используйте альтернативу
+• Контролируйте каждое движение, избегайте рывков
+• Полная амплитуда движения обязательна
+
+3. ПРОГРЕССИЯ
+
+• Увеличивайте вес только когда можете выполнить все подходы с правильной техникой
+• Если указан диапазон повторений (например, 12-16), начинайте с меньшего числа
+• Когда достигнете верхнего предела - увеличивайте вес на 2.5-5 кг
+
+4. РАЗГРУЗОЧНЫЕ НЕДЕЛИ
+
+• Каждая 4-я неделя - разгрузочная (объём снижен на 20%)
+• Это необходимо для восстановления и предотвращения перетренированности
+• Не пропускайте разгрузочные недели
+
+5. ПИТАНИЕ И ВОССТАНОВЛЕНИЕ
+
+• Пейте достаточно воды (30-40 мл на 1 кг веса)
+• Спите не менее 7-8 часов
+• Питайтесь сбалансированно, учитывая ваши цели
+
+6. ВОПРОСЫ И ПОДДЕРЖКА
+
+• При возникновении вопросов обращайтесь к тренеру
+• Тренер: {trainer_name}
+• Телефон: {trainer_phone}
+• Telegram: {trainer_telegram}
+
+Удачи в тренировках! 💪""",
+                    description="Стандартный шаблон разъяснений для PDF программ",
+                    is_active=True,
+                    is_default=True
+                )
+                db.add(default_footer)
+                db.commit()
+                logger.info("Created default footer template")
+        finally:
+            db.close()
+    except Exception as e:
+        logger.error(f"Error creating default program templates: {e}")
+        import traceback
+        logger.error(f"Traceback: {traceback.format_exc()}")
+
+
 def init_crm():
     """Initialize CRM system - create tables and default data."""
     logger.info("Initializing CRM system...")
@@ -276,6 +363,9 @@ def init_crm():
     except Exception as e:
         logger.error(f"Error creating default sales scenarios: {e}")
         # Не критично, продолжаем
+    
+    # Step 6: Create default program templates
+    create_default_program_templates()
     
     logger.info("CRM system initialized successfully")
 

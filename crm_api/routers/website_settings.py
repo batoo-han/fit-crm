@@ -2,7 +2,7 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Tuple
 from database.db import get_db_session
 from database.models import WebsiteSettings
 from database.models_crm import User
@@ -12,6 +12,25 @@ import json
 from datetime import datetime
 
 router = APIRouter()
+
+
+def _normalize_setting_key(category: str | None, key: str) -> Tuple[str, int]:
+    """Normalize setting key by stripping repeating category prefixes (except for general)."""
+    if not key:
+        return "", 0
+    if not category or category == "general":
+        return key, len(key)
+
+    prefix = f"{category}_"
+    normalized = key
+
+    while normalized.startswith(prefix):
+        normalized = normalized[len(prefix):]
+
+    if not normalized:
+        normalized = key
+
+    return normalized, len(key)
 
 
 class SettingRequest(BaseModel):
@@ -58,7 +77,8 @@ async def get_all_settings(
     settings_list = query.all()
     
     # Группируем по категориям
-    settings_dict = {}
+    settings_dict: Dict[str, Dict[str, Any]] = {}
+    key_lengths: Dict[str, Dict[str, int]] = {}
     categories = set()
     
     for setting in settings_list:
@@ -67,6 +87,7 @@ async def get_all_settings(
         
         if cat not in settings_dict:
             settings_dict[cat] = {}
+            key_lengths[cat] = {}
         
         # Парсим значение в зависимости от типа
         value = setting.setting_value
@@ -80,7 +101,13 @@ async def get_all_settings(
         elif setting.setting_type == "boolean":
             value = setting.setting_value == "true"
         
-        settings_dict[cat][setting.setting_key] = value
+        normalized_key, original_length = _normalize_setting_key(cat, setting.setting_key)
+
+        # Сохраняем значение только если такого ключа еще нет или текущий ключ короче (значит более корректный)
+        stored_length = key_lengths[cat].get(normalized_key)
+        if stored_length is None or original_length <= stored_length:
+            settings_dict[cat][normalized_key] = value
+            key_lengths[cat][normalized_key] = original_length
     
     return SettingsResponse(
         settings=settings_dict,

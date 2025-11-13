@@ -417,6 +417,48 @@ class PromoUsage(Base):
     used_at = Column(DateTime, default=datetime.utcnow)
 
 
+class ProgramTemplate(Base):
+    """Program template model - stores templates for PDF footers and program placeholders."""
+    __tablename__ = "program_templates"
+    
+    id = Column(Integer, primary_key=True)
+    name = Column(String(200), nullable=False)  # Название шаблона
+    template_type = Column(String(50), nullable=False)  # 'footer' - разъяснения в конце PDF, 'program' - шаблон программы с плейсхолдерами
+    content = Column(Text, nullable=False)  # Содержимое шаблона с плейсхолдерами
+    description = Column(Text, nullable=True)  # Описание шаблона
+    placeholders = Column(Text, nullable=True)  # JSON массив доступных плейсхолдеров (например: ["{client_name}", "{trainer_name}"])
+    is_active = Column(Boolean, default=True)  # Активен ли шаблон
+    is_default = Column(Boolean, default=False)  # Является ли шаблоном по умолчанию для своего типа
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_by = Column(Integer, ForeignKey("users.id"), nullable=True)
+    updated_by = Column(Integer, ForeignKey("users.id"), nullable=True)
+    
+    # Relationships
+    creator = relationship("User", foreign_keys="[ProgramTemplate.created_by]")
+    updater = relationship("User", foreign_keys="[ProgramTemplate.updated_by]")
+
+
+class ProgramHistory(Base):
+    """Program history model - stores archived programs that were sent to clients."""
+    __tablename__ = "program_history"
+    
+    id = Column(Integer, primary_key=True)
+    original_program_id = Column(Integer, nullable=True)  # ID оригинальной программы (может быть удалена)
+    client_id = Column(Integer, ForeignKey("clients.id"), nullable=False, index=True)
+    program_type = Column(String(50))  # free_demo, paid_monthly, paid_3month
+    program_data = Column(Text)  # JSON string with program details
+    formatted_program = Column(Text, nullable=True)  # Отформатированный текст программы
+    sent_at = Column(DateTime, nullable=False)  # Когда была отправлена
+    archived_at = Column(DateTime, default=datetime.utcnow)  # Когда была архивирована
+    archived_by = Column(Integer, ForeignKey("users.id"), nullable=True)  # Кто архивировал
+    notes = Column(Text, nullable=True)  # Дополнительные заметки
+    
+    # Relationships
+    client = relationship("Client", foreign_keys="[ProgramHistory.client_id]")
+    archiver = relationship("User", foreign_keys="[ProgramHistory.archived_by]")
+
+
 class SalesPipeline(Base):
     """Multiple named sales funnels with parameters and enable/disable."""
     __tablename__ = "sales_pipelines"

@@ -202,19 +202,75 @@ async def delete_client(
     
     # Удаляем связанные записи вручную (SQLite без каскадов)
     from database.models import Payment, TrainingProgram
-    from database.models_crm import ClientPipeline, ClientAction, ClientContact, ProgressJournal
+    from database.models_crm import (
+        ClientPipeline,
+        ClientAction,
+        ClientContact,
+        ProgressJournal,
+        Reminder,
+        ClientBotLink,
+        ClientChannelPreference,
+        CampaignDelivery,
+        PromoUsage,
+    )
 
-    # Порядок: журналы прогресса -> платежи -> программы -> pipeline/history/actions/contacts -> сам клиент
-    db.query(ProgressJournal).filter(ProgressJournal.client_id == client_id).delete(synchronize_session=False)
-    db.query(Payment).filter(Payment.client_id == client_id).delete(synchronize_session=False)
-    db.query(TrainingProgram).filter(TrainingProgram.client_id == client_id).delete(synchronize_session=False)
-    db.query(ClientPipeline).filter(ClientPipeline.client_id == client_id).delete(synchronize_session=False)
-    db.query(ClientAction).filter(ClientAction.client_id == client_id).delete(synchronize_session=False)
-    db.query(ClientContact).filter(ClientContact.client_id == client_id).delete(synchronize_session=False)
+    logger.info(f"Deleting related records for client {client_id}")
 
-    db.delete(client)
-    db.commit()
+    # Отключаем lazy loading для избежания проблем с отсутствующими колонками
+    # Используем прямые SQL запросы для удаления связанных записей
+    from sqlalchemy import text
     
+    try:
+        # Порядок: журналы прогресса -> платежи -> программы -> напоминания -> pipeline/history/actions/contacts -> маркетинг -> бот ссылки -> сам клиент
+        db.execute(text("DELETE FROM progress_journals WHERE client_id = :client_id"), {"client_id": client_id})
+        logger.info(f"Deleted progress journals for client {client_id}")
+        
+        db.execute(text("DELETE FROM payments WHERE client_id = :client_id"), {"client_id": client_id})
+        logger.info(f"Deleted payments for client {client_id}")
+        
+        db.execute(text("DELETE FROM training_programs WHERE client_id = :client_id"), {"client_id": client_id})
+        logger.info(f"Deleted training programs for client {client_id}")
+        
+        db.execute(text("DELETE FROM reminders WHERE client_id = :client_id"), {"client_id": client_id})
+        logger.info(f"Deleted reminders for client {client_id}")
+        
+        db.execute(text("DELETE FROM client_pipelines WHERE client_id = :client_id"), {"client_id": client_id})
+        logger.info(f"Deleted client pipelines for client {client_id}")
+        
+        db.execute(text("DELETE FROM client_actions WHERE client_id = :client_id"), {"client_id": client_id})
+        logger.info(f"Deleted client actions for client {client_id}")
+        
+        db.execute(text("DELETE FROM client_contacts WHERE client_id = :client_id"), {"client_id": client_id})
+        logger.info(f"Deleted client contacts for client {client_id}")
+        
+        db.execute(text("DELETE FROM client_channel_preferences WHERE client_id = :client_id"), {"client_id": client_id})
+        logger.info(f"Deleted client channel preferences for client {client_id}")
+        
+        db.execute(text("DELETE FROM campaign_deliveries WHERE client_id = :client_id"), {"client_id": client_id})
+        logger.info(f"Deleted campaign deliveries for client {client_id}")
+        
+        db.execute(text("DELETE FROM promo_code_usages WHERE client_id = :client_id"), {"client_id": client_id})
+        logger.info(f"Deleted promo code usages for client {client_id}")
+        
+        db.execute(text("DELETE FROM client_bot_links WHERE client_id = :client_id"), {"client_id": client_id})
+        logger.info(f"Deleted client bot links for client {client_id}")
+        
+        # Удаляем самого клиента
+        db.execute(text("DELETE FROM clients WHERE id = :client_id"), {"client_id": client_id})
+        logger.info(f"Deleted client {client_id}")
+        
+        db.commit()
+    except Exception as e:
+        logger.error(f"Error deleting client {client_id}: {e}")
+        import traceback
+        logger.error(f"Traceback: {traceback.format_exc()}")
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to delete client: {str(e)}"
+        )
+    
+    logger.info("Client %s deleted successfully", client_id)
     return None
 
 

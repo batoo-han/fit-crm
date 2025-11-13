@@ -1,18 +1,22 @@
 """Payments router for webhook and payment management."""
-from fastapi import APIRouter, Depends, HTTPException, status, Request
-from sqlalchemy.orm import Session
-from typing import Optional
-from pydantic import BaseModel
-from datetime import datetime
+import json
 import uuid
+from datetime import datetime
+from typing import Optional, Dict, Any
+
+from fastapi import APIRouter, Depends, HTTPException, status, Request, Body
+from sqlalchemy.orm import Session
+from pydantic import BaseModel
 
 from database.db import get_db_session
-from database.models import Payment, PaymentWebhookLog
+from database.models import Payment, PaymentWebhookLog, WebsiteSettings
+from database.models_crm import User
 from services.payment_service import PaymentService, PaymentService as PaymentServiceClass
 from loguru import logger
 from services.payments_tinkoff import verify_tinkoff_token, parse_tinkoff_status
 from config import TINKOFF_SECRET_KEY
 from services.payment_gateway import PaymentGateway
+from crm_api.dependencies import get_current_user
 
 router = APIRouter()
 
@@ -22,6 +26,93 @@ class YooKassaWebhookRequest(BaseModel):
     type: str
     event: str
     object: dict
+
+
+@router.get("/settings", status_code=status.HTTP_200_OK)
+async def get_payment_settings(
+    db: Session = Depends(get_db_session),
+    current_user: User = Depends(get_current_user),
+):
+    """Return payment settings grouped in a flat dictionary."""
+    rows = (
+        db.query(WebsiteSettings)
+        .filter(WebsiteSettings.category == "payments")
+        .all()
+    )
+    result: Dict[str, Any] = {}
+    for row in rows:
+        value: Any = row.setting_value
+        if row.setting_type == "json":
+            try:
+                value = json.loads(row.setting_value or "{}")
+            except json.JSONDecodeError:
+                logger.warning(f"Failed to parse JSON setting {row.setting_key}")
+        elif row.setting_type == "number":
+            try:
+                value = float(row.setting_value) if row.setting_value not in (None, "") else None
+            except (TypeError, ValueError):
+                value = row.setting_value
+        elif row.setting_type == "boolean":
+            value = str(row.setting_value).lower() == "true"
+        result[row.setting_key] = value
+    return result
+
+
+@router.post("/settings", status_code=status.HTTP_200_OK)
+async def update_payment_settings(
+    payload: Dict[str, Any] = Body(...),
+    db: Session = Depends(get_db_session),
+    current_user: User = Depends(get_current_user),
+):
+    """Upsert payment settings in a single request."""
+    if not isinstance(payload, dict):
+        raise HTTPException(status_code=400, detail="Payload must be a JSON object")
+
+    existing_rows = (
+        db.query(WebsiteSettings)
+        .filter(WebsiteSettings.category == "payments")
+        .all()
+    )
+    existing_map = {row.setting_key: row for row in existing_rows}
+
+    updated = 0
+    for key, value in payload.items():
+        if value is None:
+            stored_value = ""
+            value_type = "string"
+        elif isinstance(value, bool):
+            stored_value = "true" if value else "false"
+            value_type = "boolean"
+        elif isinstance(value, (int, float)):
+            stored_value = str(value)
+            value_type = "number"
+        elif isinstance(value, dict):
+            stored_value = json.dumps(value, ensure_ascii=False)
+            value_type = "json"
+        else:
+            stored_value = str(value)
+            value_type = "string"
+
+        setting = existing_map.get(key)
+        if setting:
+            setting.setting_value = stored_value
+            setting.setting_type = value_type
+            setting.category = setting.category or "payments"
+            setting.updated_by = current_user.id if getattr(current_user, "id", None) else None
+        else:
+            setting = WebsiteSettings(
+                setting_key=key,
+                setting_value=stored_value,
+                setting_type=value_type,
+                category="payments",
+                updated_by=current_user.id if getattr(current_user, "id", None) else None,
+            )
+            db.add(setting)
+            existing_map[key] = setting
+        updated += 1
+
+    db.commit()
+    return {"updated": updated}
 
 
 @router.post("/webhook/yookassa", status_code=status.HTTP_200_OK)
@@ -123,36 +214,6 @@ async def check_payment_status(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error checking payment status: {str(e)}"
         )
-
-
-@router.get("/{payment_id}", status_code=status.HTTP_200_OK)
-async def get_payment(
-    payment_id: int,
-    db: Session = Depends(get_db_session)
-):
-    """Get payment details."""
-    payment = db.query(Payment).filter(Payment.id == payment_id).first()
-    if not payment:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Payment not found"
-        )
-    
-    return {
-        "id": payment.id,
-        "client_id": payment.client_id,
-        "amount": payment.amount,
-        "currency": payment.currency,
-        "payment_type": payment.payment_type,
-        "status": payment.status,
-        "payment_method": payment.payment_method,
-        "payment_id": payment.payment_id,
-        "promo_code": payment.promo_code,
-        "discount_amount": payment.discount_amount,
-        "final_amount": payment.final_amount,
-        "created_at": payment.created_at.isoformat() if payment.created_at else None,
-        "completed_at": payment.completed_at.isoformat() if payment.completed_at else None,
-    }
 
 
 @router.post("/webhook/tinkoff", status_code=status.HTTP_200_OK)
@@ -272,6 +333,36 @@ async def payments_health(
     except Exception as e:
         logger.error(f"Payments health error: {e}")
         return {"ok": False, "error": "exception"}
+
+
+@router.get("/{payment_id}", status_code=status.HTTP_200_OK)
+async def get_payment(
+    payment_id: int,
+    db: Session = Depends(get_db_session)
+):
+    """Get payment details."""
+    payment = db.query(Payment).filter(Payment.id == payment_id).first()
+    if not payment:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Payment not found"
+        )
+
+    return {
+        "id": payment.id,
+        "client_id": payment.client_id,
+        "amount": payment.amount,
+        "currency": payment.currency,
+        "payment_type": payment.payment_type,
+        "status": payment.status,
+        "payment_method": payment.payment_method,
+        "payment_id": payment.payment_id,
+        "promo_code": payment.promo_code,
+        "discount_amount": payment.discount_amount,
+        "final_amount": payment.final_amount,
+        "created_at": payment.created_at.isoformat() if payment.created_at else None,
+        "completed_at": payment.completed_at.isoformat() if payment.completed_at else None,
+    }
 
 
 @router.get("/webhooks/logs", status_code=status.HTTP_200_OK)

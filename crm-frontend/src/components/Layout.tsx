@@ -14,6 +14,7 @@ const Layout = () => {
     { name: 'Соцсети', href: '/social-posts', icon: '📢' },
     { name: 'Интеграции', href: '/integrations', icon: '🔌' },
     { name: 'Программы', href: '/programs', icon: '📋' },
+    { name: 'Шаблоны программ', href: '/program-templates', icon: '📝' },
     { name: 'Аналитика', href: '/analytics', icon: '📈' },
     { name: 'Настройки сайта', href: '/website-settings', icon: '⚙️' },
     { name: 'AI-агент', href: '/ai-agent', icon: '🤖' },

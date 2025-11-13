@@ -2,6 +2,7 @@
 from __future__ import annotations
 from typing import Optional, Dict, Any
 from sqlalchemy.orm import Session
+from sqlalchemy.exc import IntegrityError
 from datetime import datetime
 from database.models_crm import PromoCode, PromoUsage
 from database.models import Client
@@ -20,7 +21,11 @@ class PromoService:
     def create_code(db: Session, data: Dict[str, Any]) -> PromoCode:
         promo = PromoCode(**data)
         db.add(promo)
-        db.commit()
+        try:
+            db.commit()
+        except IntegrityError as exc:
+            db.rollback()
+            raise ValueError("Промокод с таким кодом уже существует") from exc
         db.refresh(promo)
         return promo
 
@@ -30,7 +35,11 @@ class PromoService:
             if hasattr(promo, field):
                 setattr(promo, field, value)
         promo.updated_at = datetime.utcnow()
-        db.commit()
+        try:
+            db.commit()
+        except IntegrityError as exc:
+            db.rollback()
+            raise ValueError("Промокод с таким кодом уже существует") from exc
         db.refresh(promo)
         return promo
 

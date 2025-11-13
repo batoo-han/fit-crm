@@ -64,6 +64,7 @@ class TrainingProgram(Base):
     is_paid = Column(Boolean, default=False)  # Оплачена ли программа
     assigned_by = Column(Integer, ForeignKey("users.id"), nullable=True)  # Кто назначил программу
     assigned_at = Column(DateTime, nullable=True)  # Когда назначена
+    sent_at = Column(DateTime, nullable=True)  # Когда была отправлена клиенту
     created_at = Column(DateTime, default=datetime.utcnow)
     started_at = Column(DateTime, nullable=True)
     completed_at = Column(DateTime, nullable=True)

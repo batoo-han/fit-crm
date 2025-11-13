@@ -23,7 +23,7 @@ RUN pip install --no-cache-dir -r /app/requirements.txt
 COPY . /app
 
 # Create runtime directories
-RUN mkdir -p /app/logs /data
+RUN mkdir -p /app/logs /data /app/data/programs /app/uploads
 
 # Expose internal app port
 EXPOSE 8000

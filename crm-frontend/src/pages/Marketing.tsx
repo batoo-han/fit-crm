@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api } from '../services/api'
+import { useModal } from '../components/ui/modal/ModalContext'
 
 type Campaign = {
   id: number
@@ -28,6 +29,7 @@ type Message = {
 
 const Marketing = () => {
   const queryClient = useQueryClient()
+  const { showModal } = useModal()
   const [editingCampaign, setEditingCampaign] = useState<Campaign | null>(null)
   const [campaignForm, setCampaignForm] = useState<Campaign | null>(null as unknown as Campaign)
   const [selectedCampaignId, setSelectedCampaignId] = useState<number | ''>('')
@@ -35,6 +37,8 @@ const Marketing = () => {
   const [audienceForm, setAudienceForm] = useState<Audience | null>(null as unknown as Audience)
   const [editingMessage, setEditingMessage] = useState<Message | null>(null)
   const [messageForm, setMessageForm] = useState<Message | null>(null as unknown as Message)
+  const [campaignParamsText, setCampaignParamsText] = useState(JSON.stringify({}, null, 2))
+  const [audienceFilterText, setAudienceFilterText] = useState(JSON.stringify({}, null, 2))
   const [editingPromo, setEditingPromo] = useState<any>(null)
   const initialPromoForm = {
     code: '',
@@ -151,6 +155,7 @@ const Marketing = () => {
       queryClient.invalidateQueries({ queryKey: ['mkt-campaigns'] })
       setEditingCampaign(null)
       setCampaignForm(null as unknown as Campaign)
+      setCampaignParamsText(JSON.stringify({}, null, 2))
     },
   })
   const updateCampaign = useMutation({
@@ -162,6 +167,7 @@ const Marketing = () => {
       queryClient.invalidateQueries({ queryKey: ['mkt-campaigns'] })
       setEditingCampaign(null)
       setCampaignForm(null as unknown as Campaign)
+      setCampaignParamsText(JSON.stringify({}, null, 2))
     },
   })
   const deleteCampaign = useMutation({
@@ -180,6 +186,7 @@ const Marketing = () => {
       queryClient.invalidateQueries({ queryKey: ['mkt-audiences'] })
       setEditingAudience(null)
       setAudienceForm(null as unknown as Audience)
+      setAudienceFilterText(JSON.stringify({}, null, 2))
     },
   })
   const updateAudience = useMutation({
@@ -191,6 +198,7 @@ const Marketing = () => {
       queryClient.invalidateQueries({ queryKey: ['mkt-audiences'] })
       setEditingAudience(null)
       setAudienceForm(null as unknown as Audience)
+      setAudienceFilterText(JSON.stringify({}, null, 2))
     },
   })
   const deleteAudience = useMutation({
@@ -280,23 +288,54 @@ const Marketing = () => {
   const beginCreateCampaign = () => {
     setEditingCampaign({ id: 0, name: '', description: '', status: 'draft', channel: 'both', schedule_at: null, params: {} })
     setCampaignForm({ id: 0, name: '', description: '', status: 'draft', channel: 'both', schedule_at: null, params: {} })
+    setCampaignParamsText(JSON.stringify({}, null, 2))
   }
   const beginEditCampaign = (c: Campaign) => {
     setEditingCampaign(c)
-    setCampaignForm({ ...c, params: c.params || {} })
+    const paramsObj = c.params || {}
+    setCampaignForm({ ...c, params: paramsObj })
+    setCampaignParamsText(JSON.stringify(paramsObj, null, 2))
   }
   const submitCampaign = () => {
-    if (!campaignForm?.name || campaignForm.name.trim().length === 0) {
-      alert('Название кампании обязательно')
+    if (!campaignForm) {
+      showModal({
+        title: 'Форма кампании не загружена',
+        message: 'Перезапустите создание кампании и попробуйте снова.',
+        tone: 'error',
+      })
       return
     }
+    if (!campaignForm.name || campaignForm.name.trim().length === 0) {
+      showModal({
+        title: 'Название кампании',
+        message: 'Название кампании обязательно',
+        tone: 'error',
+      })
+      return
+    }
+    let paramsObject: Record<string, unknown> = {}
+    const rawParams = campaignParamsText || ''
+    if (rawParams.trim().length > 0) {
+      try {
+        paramsObject = JSON.parse(rawParams)
+      } catch (error) {
+        showModal({
+          title: 'Ошибка в JSON',
+          message: 'Параметры кампании содержат некорректный JSON. Исправьте его перед сохранением.',
+          tone: 'error',
+        })
+        return
+      }
+    }
+    setCampaignForm((prev) => (prev ? { ...prev, params: paramsObject } : prev))
+    setCampaignParamsText(JSON.stringify(paramsObject, null, 2))
     const payload = {
       name: campaignForm.name.trim(),
       description: campaignForm.description || '',
       status: campaignForm.status || 'draft',
       channel: campaignForm.channel || 'both',
       schedule_at: campaignForm.schedule_at || null,
-      params: campaignForm.params || {},
+      params: paramsObject,
     }
     if (editingCampaign && editingCampaign.id > 0) {
       updateCampaign.mutate({ id: editingCampaign.id, payload })
@@ -308,20 +347,51 @@ const Marketing = () => {
   const beginCreateAudience = () => {
     setEditingAudience({ id: 0, name: '', description: '', filter_json: {} })
     setAudienceForm({ id: 0, name: '', description: '', filter_json: {} })
+    setAudienceFilterText(JSON.stringify({}, null, 2))
   }
   const beginEditAudience = (a: Audience) => {
     setEditingAudience(a)
-    setAudienceForm({ ...a, filter_json: a.filter_json || {} })
+    const filterObj = a.filter_json || {}
+    setAudienceForm({ ...a, filter_json: filterObj })
+    setAudienceFilterText(JSON.stringify(filterObj, null, 2))
   }
   const submitAudience = () => {
-    if (!audienceForm?.name || audienceForm.name.trim().length === 0) {
-      alert('Название сегмента обязательно')
+    if (!audienceForm) {
+      showModal({
+        title: 'Форма сегмента не загружена',
+        message: 'Перезапустите создание сегмента и попробуйте снова.',
+        tone: 'error',
+      })
       return
     }
+    if (!audienceForm.name || audienceForm.name.trim().length === 0) {
+      showModal({
+        title: 'Название сегмента',
+        message: 'Название сегмента обязательно',
+        tone: 'error',
+      })
+      return
+    }
+    let filterObject: Record<string, unknown> = {}
+    const rawFilter = audienceFilterText || ''
+    if (rawFilter.trim().length > 0) {
+      try {
+        filterObject = JSON.parse(rawFilter)
+      } catch (error) {
+        showModal({
+          title: 'Ошибка в JSON',
+          message: 'Фильтр сегмента содержит некорректный JSON. Исправьте его перед сохранением.',
+          tone: 'error',
+        })
+        return
+      }
+    }
+    setAudienceForm((prev) => (prev ? { ...prev, filter_json: filterObject } : prev))
+    setAudienceFilterText(JSON.stringify(filterObject, null, 2))
     const payload = {
       name: audienceForm.name.trim(),
       description: audienceForm.description || '',
-      filter_json: audienceForm.filter_json || {},
+      filter_json: filterObject,
     }
     if (editingAudience && editingAudience.id > 0) {
       updateAudience.mutate({ id: editingAudience.id, payload })
@@ -332,7 +402,11 @@ const Marketing = () => {
 
   const beginCreateMessage = () => {
     if (!campaigns || campaigns.length === 0) {
-      alert('Сначала создайте кампанию')
+      showModal({
+        title: 'Нет кампаний',
+        message: 'Сначала создайте кампанию',
+        tone: 'error',
+      })
       return
     }
     setEditingMessage({ id: 0, campaign_id: campaigns[0].id, title: '', body_text: '' })
@@ -344,7 +418,11 @@ const Marketing = () => {
   }
   const submitMessage = () => {
     if (!messageForm?.campaign_id || !messageForm.body_text || messageForm.body_text.trim().length === 0) {
-      alert('Выберите кампанию и заполните текст сообщения')
+      showModal({
+        title: 'Недостаточно данных',
+        message: 'Выберите кампанию и заполните текст сообщения',
+        tone: 'error',
+      })
       return
     }
     const payload = {
@@ -359,13 +437,14 @@ const Marketing = () => {
     }
   }
 
-  const parseJson = (s: string) => {
+  const tryParseJson = (s: string) => {
+    if (!s || s.trim() === '') {
+      return {}
+    }
     try {
-      if (s.trim() === '') return {}
       return JSON.parse(s)
     } catch {
-      alert('Неверный JSON')
-      return {}
+      return null
     }
   }
 
@@ -379,9 +458,17 @@ const Marketing = () => {
             onClick={async () => {
               try {
                 await api.post('/marketing/process-scheduled', { limit_per_run: 200, max_runs: 5 })
-                alert('Запланированные кампании поставлены в обработку (если были условия).')
+                showModal({
+                  title: 'Обработка запущена',
+                  message: 'Запланированные кампании поставлены в обработку (если были условия).',
+                  tone: 'success',
+                })
               } catch {
-                alert('Не удалось запустить обработку расписанных кампаний')
+                showModal({
+                  title: 'Не удалось запустить',
+                  message: 'Не удалось запустить обработку расписанных кампаний',
+                  tone: 'error',
+                })
               }
             }}
             className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-100 text-sm"
@@ -681,13 +768,15 @@ const Marketing = () => {
               <label className="block text-sm font-medium text-gray-700 mb-1">Параметры (JSON)</label>
               <textarea
                 rows={5}
-                value={JSON.stringify(campaignForm?.params || {}, null, 2)}
-                onChange={(e) =>
-                  setCampaignForm({
-                    ...(campaignForm as Campaign),
-                    params: parseJson(e.target.value),
-                  })
-                }
+                value={campaignParamsText}
+                onChange={(e) => {
+                  const value = e.target.value
+                  setCampaignParamsText(value)
+                  const parsed = tryParseJson(value)
+                  if (parsed !== null) {
+                    setCampaignForm((prev) => (prev ? { ...prev, params: parsed } : prev))
+                  }
+                }}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg font-mono text-sm"
               />
             </div>
@@ -696,11 +785,13 @@ const Marketing = () => {
               <select
                 value={String(((campaignForm?.params || {}) as any).default_audience_id || '')}
                 onChange={(e) => {
+                  if (!campaignForm) return
                   const val = e.target.value ? parseInt(e.target.value) : undefined
-                  const next = { ...((campaignForm?.params || {}) as any) }
+                  const next = { ...((campaignForm.params || {}) as any) }
                   if (val) next.default_audience_id = val
                   else delete next.default_audience_id
-                  setCampaignForm({ ...(campaignForm as Campaign), params: next })
+                  setCampaignForm({ ...campaignForm, params: next })
+                  setCampaignParamsText(JSON.stringify(next, null, 2))
                 }}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg"
               >
@@ -720,10 +811,12 @@ const Marketing = () => {
                 min={1}
                 value={Number(((campaignForm?.params || {}) as any).default_limit || 100)}
                 onChange={(e) => {
+                  if (!campaignForm) return
                   const val = e.target.value ? parseInt(e.target.value) : 100
-                  const next = { ...((campaignForm?.params || {}) as any) }
+                  const next = { ...((campaignForm.params || {}) as any) }
                   next.default_limit = val
-                  setCampaignForm({ ...(campaignForm as Campaign), params: next })
+                  setCampaignForm({ ...campaignForm, params: next })
+                  setCampaignParamsText(JSON.stringify(next, null, 2))
                 }}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg"
               />
@@ -734,7 +827,14 @@ const Marketing = () => {
             <button onClick={submitCampaign} className="px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700" disabled={createCampaign.isPending || updateCampaign.isPending}>
               {editingCampaign.id > 0 ? 'Сохранить' : 'Создать'}
             </button>
-            <button onClick={() => { setEditingCampaign(null); setCampaignForm(null as unknown as Campaign) }} className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-100">
+            <button
+              onClick={() => {
+                setEditingCampaign(null)
+                setCampaignForm(null as unknown as Campaign)
+                setCampaignParamsText(JSON.stringify({}, null, 2))
+              }}
+              className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-100"
+            >
               Отмена
             </button>
           </div>
@@ -805,13 +905,15 @@ const Marketing = () => {
               <label className="block text-sm font-medium text-gray-700 mb-1">Фильтр (JSON)</label>
               <textarea
                 rows={6}
-                value={JSON.stringify(audienceForm?.filter_json || {}, null, 2)}
-                onChange={(e) =>
-                  setAudienceForm({
-                    ...(audienceForm as Audience),
-                    filter_json: parseJson(e.target.value),
-                  })
-                }
+                value={audienceFilterText}
+                onChange={(e) => {
+                  const value = e.target.value
+                  setAudienceFilterText(value)
+                  const parsed = tryParseJson(value)
+                  if (parsed !== null) {
+                    setAudienceForm((prev) => (prev ? { ...prev, filter_json: parsed } : prev))
+                  }
+                }}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg font-mono text-sm"
               />
             </div>
@@ -820,7 +922,14 @@ const Marketing = () => {
             <button onClick={submitAudience} className="px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700" disabled={createAudience.isPending || updateAudience.isPending}>
               {editingAudience.id > 0 ? 'Сохранить' : 'Создать'}
             </button>
-            <button onClick={() => { setEditingAudience(null); setAudienceForm(null as unknown as Audience) }} className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-100">
+            <button
+              onClick={() => {
+                setEditingAudience(null)
+                setAudienceForm(null as unknown as Audience)
+                setAudienceFilterText(JSON.stringify({}, null, 2))
+              }}
+              className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-100"
+            >
               Отмена
             </button>
           </div>
@@ -1075,7 +1184,11 @@ const Marketing = () => {
         <button
           onClick={() => {
             if (!promoForm.code.trim()) {
-              alert('Введите код')
+              showModal({
+                title: 'Код промоакции',
+                message: 'Введите код',
+                tone: 'error',
+              })
               return
             }
             const payload = {

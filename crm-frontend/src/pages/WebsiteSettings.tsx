@@ -1,6 +1,8 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api } from '../services/api'
+import { useModal } from '../components/ui/modal/ModalContext'
+import { LogoCropperModal } from '../components/LogoCropperModal'
 
 const LLM_PROVIDERS = [
   { value: 'yandex', label: 'Yandex GPT' },
@@ -31,11 +33,54 @@ type LlmProvider = keyof typeof DEFAULT_LLM_MODEL
 const isLlmProvider = (value: string): value is LlmProvider =>
   value in DEFAULT_LLM_MODEL
 
+const normalizeCategorySettings = (category: string, categorySettings: Record<string, any>) => {
+  if (!categorySettings) return {}
+
+  const normalized: Record<string, any> = {}
+  const keyLengths: Record<string, number> = {}
+  const prefix = category !== 'general' && category ? `${category}_` : ''
+
+  Object.entries(categorySettings).forEach(([rawKey, rawValue]) => {
+    if (!rawKey) return
+
+    let normalizedKey = rawKey
+    if (prefix) {
+      while (normalizedKey.startsWith(prefix)) {
+        normalizedKey = normalizedKey.slice(prefix.length)
+      }
+      if (!normalizedKey) {
+        normalizedKey = rawKey
+      }
+    }
+
+    const normalizedName = normalizedKey || rawKey
+    const existingLength = keyLengths[normalizedName]
+    if (existingLength === undefined || rawKey.length <= existingLength) {
+      normalized[normalizedName] = rawValue
+      keyLengths[normalizedName] = rawKey.length
+    }
+  })
+
+  return normalized
+}
+
+const normalizeSettings = (rawSettings: Record<string, any>) => {
+  const normalized: Record<string, any> = {}
+  Object.entries(rawSettings || {}).forEach(([category, values]) => {
+    normalized[category] = normalizeCategorySettings(category, values as Record<string, any>)
+  })
+  return normalized
+}
+
 const WebsiteSettings = () => {
   const queryClient = useQueryClient()
+  const { showModal } = useModal()
   const [activeTab, setActiveTab] = useState('general')
   const [settings, setSettings] = useState<any>({})
   const [widgetSettings, setWidgetSettings] = useState<any>({})
+  const [logoCropSource, setLogoCropSource] = useState<string | null>(null)
+  const [logoCropMeta, setLogoCropMeta] = useState<{ name: string; type: string } | null>(null)
+  const [isUploadingLogo, setIsUploadingLogo] = useState(false)
 
   // Загрузка настроек
   const { data: allSettings, isLoading } = useQuery({
@@ -48,11 +93,20 @@ const WebsiteSettings = () => {
 
   useEffect(() => {
     if (allSettings) {
-      const newSettings = allSettings.settings || {}
-      setSettings(newSettings)
-      setWidgetSettings(newSettings.widget || {})
+      const rawSettings = allSettings.settings || {}
+      const normalizedSettings = normalizeSettings(rawSettings)
+      setSettings(normalizedSettings)
+      setWidgetSettings(normalizedSettings.widget || {})
     }
   }, [allSettings])
+
+  useEffect(() => {
+    return () => {
+      if (logoCropSource) {
+        URL.revokeObjectURL(logoCropSource)
+      }
+    }
+  }, [logoCropSource])
 
   // Сохранение настроек
   const updateMutation = useMutation({
@@ -62,7 +116,11 @@ const WebsiteSettings = () => {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['website-settings'] })
-      alert('Настройки сохранены!')
+      showModal({
+        title: 'Настройки сохранены',
+        message: 'Изменения успешно применены.',
+        tone: 'success',
+      })
     },
   })
 
@@ -72,7 +130,8 @@ const WebsiteSettings = () => {
     // Собираем все настройки для сохранения
     Object.keys(settings).forEach(category => {
       Object.keys(settings[category] || {}).forEach(key => {
-        const fullKey = category === 'general' ? key : `${category}_${key}`
+        const prefix = category === 'general' ? '' : `${category}_`
+        const fullKey = category === 'general' ? key : (key.startsWith(prefix) ? key : `${prefix}${key}`)
         const value = settings[category][key]
         updates[fullKey] = {
           setting_key: fullKey,
@@ -102,6 +161,79 @@ const WebsiteSettings = () => {
       }))
     }
   }, [])
+
+  const cleanupLogoCropSource = useCallback(() => {
+    if (logoCropSource) {
+      URL.revokeObjectURL(logoCropSource)
+    }
+    setLogoCropSource(null)
+    setLogoCropMeta(null)
+  }, [logoCropSource])
+
+  const handleManualLogoUrlChange = useCallback((value: string) => {
+    updateSetting('widget', 'logo', value)
+  }, [updateSetting])
+
+  const uploadLogoFile = useCallback(
+    async (file: File) => {
+      const formData = new FormData()
+      formData.append('file', file)
+      formData.append('file_type', 'logo_widget')
+      try {
+        setIsUploadingLogo(true)
+        const res = await api.post('/uploads', formData, {
+          headers: { 'Content-Type': 'multipart/form-data' },
+        })
+        const url = res.data?.url
+        if (url) {
+          updateSetting('widget', 'logo', url)
+          showModal({
+            title: 'Логотип обновлён',
+            message: 'Изображение успешно загружено и обрезано.',
+            tone: 'success',
+          })
+        }
+      } catch (err) {
+        console.error('Ошибка загрузки логотипа', err)
+        showModal({
+          title: 'Ошибка загрузки',
+          message: 'Не удалось загрузить логотип. Попробуйте другое изображение или попробуйте позже.',
+          tone: 'error',
+        })
+      } finally {
+        setIsUploadingLogo(false)
+      }
+    },
+    [showModal, updateSetting]
+  )
+
+  const handleLogoFileSelected = useCallback((file: File) => {
+    if (!file) return
+    const objectUrl = URL.createObjectURL(file)
+    setLogoCropSource(objectUrl)
+    setLogoCropMeta({
+      name: file.name.replace(/\.[^/.]+$/, ''),
+      type: file.type || 'image/png',
+    })
+  }, [])
+
+  const handleLogoCropCancel = useCallback(() => {
+    cleanupLogoCropSource()
+  }, [cleanupLogoCropSource])
+
+  const handleLogoCropConfirm = useCallback(
+    async (croppedBlob: Blob) => {
+      if (!logoCropMeta) return
+      try {
+        const fileName = `${logoCropMeta.name || 'widget-logo'}.png`
+        const croppedFile = new File([croppedBlob], fileName, { type: 'image/png' })
+        await uploadLogoFile(croppedFile)
+      } finally {
+        cleanupLogoCropSource()
+      }
+    },
+    [cleanupLogoCropSource, logoCropMeta, uploadLogoFile]
+  )
 
   const handleWidgetSettingChange = useCallback(
     (key: string, value: any) => updateSetting('widget', key, value),
@@ -177,9 +309,23 @@ const WebsiteSettings = () => {
           <FontsSettings settings={settings.fonts || {}} updateSetting={(key: string, value: any) => updateSetting('fonts', key, value)} />
         )}
         {activeTab === 'widget' && (
-          <WidgetSettings settings={widgetSettings || {}} updateSetting={handleWidgetSettingChange} />
+          <WidgetSettings
+            settings={widgetSettings || {}}
+            updateSetting={handleWidgetSettingChange}
+            onLogoUpload={handleLogoFileSelected}
+            onLogoUrlChange={handleManualLogoUrlChange}
+            isUploadingLogo={isUploadingLogo}
+          />
         )}
       </div>
+      {logoCropSource && (
+        <LogoCropperModal
+          imageSrc={logoCropSource}
+          onCancel={handleLogoCropCancel}
+          onConfirm={handleLogoCropConfirm}
+          aspect={1}
+        />
+      )}
     </div>
   )
 }
@@ -260,6 +406,7 @@ const GeneralSettings = ({ settings, updateSetting }: any) => {
 }
 
 const HeaderSettings = ({ settings, updateSetting }: any) => {
+  const { showModal } = useModal()
   return (
     <div className="space-y-6">
       <h2 className="text-xl font-bold text-gray-900 mb-4">Настройки шапки</h2>
@@ -286,6 +433,7 @@ const HeaderSettings = ({ settings, updateSetting }: any) => {
                   if (!file) return
                   const formData = new FormData()
                   formData.append('file', file)
+                  formData.append('file_type', 'logo_site')
                   try {
                     const res = await api.post('/uploads', formData, {
                       headers: { 'Content-Type': 'multipart/form-data' },
@@ -293,7 +441,11 @@ const HeaderSettings = ({ settings, updateSetting }: any) => {
                     const url = res.data?.url
                     if (url) updateSetting('logo_url', url)
                   } catch (err) {
-                    alert('Ошибка загрузки файла')
+                    showModal({
+                      title: 'Ошибка загрузки',
+                      message: 'Ошибка загрузки файла',
+                      tone: 'error',
+                    })
                   } finally {
                     e.currentTarget.value = ''
                   }
@@ -458,9 +610,30 @@ const FontsSettings = ({ settings, updateSetting }: any) => {
   )
 }
 
-const WidgetSettings = ({ settings, updateSetting }: any) => {
+interface WidgetSettingsProps {
+  settings: any
+  updateSetting: (key: string, value: any) => void
+  onLogoUpload: (file: File) => void
+  onLogoUrlChange: (value: string) => void
+  isUploadingLogo?: boolean
+}
+
+const WidgetSettings = ({
+  settings,
+  updateSetting,
+  onLogoUpload,
+  onLogoUrlChange,
+  isUploadingLogo,
+}: WidgetSettingsProps) => {
   const providerValue = settings.llm_provider ?? 'yandex'
   const llmProvider: LlmProvider = isLlmProvider(providerValue) ? providerValue : 'yandex'
+
+  const widgetTitle = settings.title ?? settings.widget_title ?? 'Фитнес-консультант'
+  const greetingMessage =
+    settings.greeting_message ?? settings.widget_greeting_message ?? 'Привет! 👋 Я помогу вам выбрать программу тренировок. Давайте начнем!'
+  const logoValue = settings.logo ?? settings.widget_logo ?? ''
+  const primaryColor = settings.primary_color ?? settings.widget_primary_color ?? '#3B82F6'
+  const historyLimit = settings.history_limit ?? settings.widget_history_limit ?? 30
 
   const availableModels = useMemo(
     () => (llmProvider === 'yandex' ? YANDEX_MODELS : OPENAI_MODELS),
@@ -498,8 +671,8 @@ const WidgetSettings = ({ settings, updateSetting }: any) => {
               <label className="block text-sm font-medium text-gray-700 mb-2">Заголовок виджета</label>
               <input
                 type="text"
-                value={settings.widget_title || 'Фитнес-консультант'}
-                onChange={(e) => updateSetting('widget_title', e.target.value)}
+                value={widgetTitle}
+                onChange={(e) => updateSetting('title', e.target.value)}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500"
               />
             </div>
@@ -507,7 +680,7 @@ const WidgetSettings = ({ settings, updateSetting }: any) => {
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">Приветственное сообщение</label>
               <textarea
-                value={settings.greeting_message || 'Привет! 👋 Я помогу вам выбрать программу тренировок. Давайте начнем!'}
+                value={greetingMessage}
                 onChange={(e) => updateSetting('greeting_message', e.target.value)}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500"
                 rows={3}
@@ -519,31 +692,25 @@ const WidgetSettings = ({ settings, updateSetting }: any) => {
               <div className="flex gap-2">
                 <input
                   type="text"
-                  value={settings.widget_logo || ''}
-                  onChange={(e) => updateSetting('widget_logo', e.target.value)}
+                  value={logoValue}
+                  onChange={(e) => onLogoUrlChange(e.target.value)}
                   className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500"
                   placeholder="https://..."
                 />
                 <label className="px-3 py-2 border border-gray-300 rounded-lg cursor-pointer hover:bg-gray-50">
-                  Загрузить
+                  <span className="whitespace-nowrap text-sm font-medium text-primary-600">
+                    {isUploadingLogo ? 'Загрузка...' : 'Загрузить'}
+                  </span>
                   <input
                     type="file"
                     accept="image/*"
                     className="hidden"
-                    onChange={async (e) => {
+                    disabled={isUploadingLogo}
+                    onChange={(e) => {
                       const file = e.target.files?.[0]
                       if (!file) return
-                      const formData = new FormData()
-                      formData.append('file', file)
-                      try {
-                        const res = await api.post('/uploads', formData, {
-                          headers: { 'Content-Type': 'multipart/form-data' },
-                        })
-                        const url = res.data?.url
-                        if (url) updateSetting('widget_logo', url)
-                      } catch (err) {
-                        alert('Ошибка загрузки файла')
-                      } finally {
+                      onLogoUpload(file)
+                      if (e.currentTarget) {
                         e.currentTarget.value = ''
                       }
                     }}
@@ -556,10 +723,28 @@ const WidgetSettings = ({ settings, updateSetting }: any) => {
               <label className="block text-sm font-medium text-gray-700 mb-2">Основной цвет виджета</label>
               <input
                 type="color"
-                value={settings.widget_primary_color || '#3B82F6'}
-                onChange={(e) => updateSetting('widget_primary_color', e.target.value)}
+                value={primaryColor}
+                onChange={(e) => updateSetting('primary_color', e.target.value)}
                 className="w-full h-10 border border-gray-300 rounded-lg"
               />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Сохранять контекст (сообщений)</label>
+              <input
+                type="number"
+                min={1}
+                max={50}
+                value={historyLimit}
+                onChange={(e) => {
+                  const value = Math.max(1, Math.min(50, parseInt(e.target.value) || 1))
+                  updateSetting('history_limit', value)
+                }}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500"
+              />
+              <p className="mt-1 text-xs text-gray-500">
+                Количество последних сообщений, которые будут отправляться в LLM для сохранения контекста (от 1 до 50).
+              </p>
             </div>
           </div>
         </div>

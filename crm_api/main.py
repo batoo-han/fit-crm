@@ -27,6 +27,7 @@ print("DEBUG: Routers imported successfully")
 logger.info("DEBUG: Routers imported successfully")
 
 from database.init_crm import init_crm
+from services.uploads_cleanup import cleanup_uploads
 
 print("DEBUG: init_crm imported successfully")
 logger.info("DEBUG: init_crm imported successfully")
@@ -72,6 +73,19 @@ async def lifespan(app: FastAPI):
         logger.error(f"Traceback: {traceback.format_exc()}")
         # Не блокируем запуск API, даже если инициализация не удалась
         logger.warning("Continuing API startup despite initialization errors...")
+    
+    # Очистка папки uploads от неиспользуемых файлов и битых ссылок
+    try:
+        logger.info("Starting uploads cleanup...")
+        cleanup_uploads()
+        logger.info("Uploads cleanup completed successfully")
+    except Exception as e:
+        logger.error(f"Error during uploads cleanup: {e}")
+        import traceback
+        logger.error(f"Traceback: {traceback.format_exc()}")
+        # Не блокируем запуск API, даже если очистка не удалась
+        logger.warning("Continuing API startup despite uploads cleanup errors...")
+    
     logger.info("Application startup complete")
     yield
     logger.info("Shutting down CRM API...")
@@ -176,6 +190,10 @@ app.include_router(auth.router, prefix="/api/auth", tags=["auth"])
 app.include_router(clients.router, prefix="/api/clients", tags=["clients"])
 app.include_router(pipeline.router, prefix="/api/pipeline", tags=["pipeline"])
 app.include_router(programs.router, prefix="/api/programs", tags=["programs"])
+
+# Import and include program templates router
+from crm_api.routers import program_templates
+app.include_router(program_templates.router, prefix="/api/program-templates", tags=["program-templates"])
 app.include_router(progress.router, prefix="/api/progress", tags=["progress"])
 app.include_router(actions.router, prefix="/api/actions", tags=["actions"])
 app.include_router(contacts.router, prefix="/api/contacts", tags=["contacts"])

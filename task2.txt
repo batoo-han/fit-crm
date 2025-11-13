@@ -599,6 +599,8 @@ pscp J:\dnk\script.js batoo@31.59.120.22:/home/batoo/dnk
 pscp -r J:\dnk\ batoo@31.59.120.22:/home/batoo/dnk
 sudo cp /home/batoo/dnk/script.js /var/www/dnk
 sudo chown -R www-data:www-data /var/www/dnk
+python -m http.server 8001
+
 
 отлично.
 теперь нужно подготовить всю связку приложение + сайт. Это будет работать на одном сервере - https://batoohan.ru/ . Ubuntu server 24.04. Сервис будет установлен отдельно через сборку в докер. На сервере сайт работает через nginx/

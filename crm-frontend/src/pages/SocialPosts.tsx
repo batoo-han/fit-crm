@@ -1,6 +1,7 @@
 import { useState, useMemo } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api } from '../services/api'
+import { useModal } from '../components/ui/modal/ModalContext'
 
 
 type SocialPost = {
@@ -23,6 +24,7 @@ type SocialPost = {
 
 const SocialPosts = () => {
   const queryClient = useQueryClient()
+  const { showModal } = useModal()
   const { data: posts, isLoading } = useQuery({
     queryKey: ['social-posts'],
     queryFn: async () => {
@@ -299,7 +301,11 @@ const SocialPosts = () => {
 
   const onSubmit = () => {
     if (!form.content.trim()) {
-      alert('Заполните контент поста')
+      showModal({
+        title: 'Незаполненный пост',
+        message: 'Заполните контент поста',
+        tone: 'error',
+      })
       return
     }
     const payload = {
@@ -656,7 +662,11 @@ const SocialPosts = () => {
                       onClick={() => {
                         if (editingTemplate === null) return
                         if (!templateForm.name.trim() || !templateForm.content.trim()) {
-                          alert('Заполните название и текст')
+                          showModal({
+                            title: 'Недостаточно данных',
+                            message: 'Заполните название и текст',
+                            tone: 'error',
+                          })
                           return
                         }
                         updateTemplateMutation.mutate({

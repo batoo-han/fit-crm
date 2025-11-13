@@ -1,9 +1,11 @@
-import { useState } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api } from '../services/api'
+import { useModal } from '../components/ui/modal/ModalContext'
 
 const Integrations = () => {
   const queryClient = useQueryClient()
+  const { showModal } = useModal()
   const [lastHealth, setLastHealth] = useState<{ provider?: string; ok?: boolean; url?: string } | null>(null)
   const { data: status, isLoading } = useQuery({
     queryKey: ['amocrm-status'],
@@ -40,29 +42,112 @@ const Integrations = () => {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['amocrm-status'] })
-      alert('Настройки amoCRM сохранены')
+      showModal({
+        title: 'amoCRM',
+        message: 'Настройки amoCRM сохранены',
+        tone: 'success',
+      })
     },
   })
 
   const { data: paySettings } = useQuery({
     queryKey: ['payment-settings'],
     queryFn: async () => {
-      const res = await api.get('/website/settings')
+      const res = await api.get('/payments/settings')
       return res.data as Record<string, any>
     },
   })
 
-  const saveSetting = useMutation({
-    mutationFn: async ({ key, value, type, category }: { key: string; value: any; type?: string; category?: string }) => {
-      return api.post('/website/settings', {
-        setting_key: key,
-        setting_value: value,
-        setting_type: type || 'string',
-        category: category || 'payments',
+  const { data: promos } = useQuery({
+    queryKey: ['promo-codes'],
+    queryFn: async () => {
+      const res = await api.get('/promocodes')
+      return res.data as Array<{ id: number; code: string; description?: string | null; is_active: boolean }>
+    },
+  })
+
+  const [pendingSettings, setPendingSettings] = useState<Record<string, any>>({})
+
+  const savePaymentSettings = useMutation({
+    mutationFn: async (payload: Record<string, any>) => {
+      return api.post('/payments/settings', payload)
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['payment-settings'] })
+      showModal({
+        title: 'Настройки сохранены',
+        message: 'Параметры платёжных систем успешно обновлены.',
+        tone: 'success',
       })
     },
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['payment-settings'] }),
+    onError: () => {
+      showModal({
+        title: 'Ошибка сохранения',
+        message: 'Не удалось сохранить настройки платёжных систем. Попробуйте позже.',
+        tone: 'error',
+      })
+    },
   })
+
+  useEffect(() => {
+    if (paySettings) {
+      setPendingSettings({ ...paySettings })
+    }
+  }, [paySettings])
+
+  const promoOptions = useMemo(
+    () =>
+      (promos || [])
+        .filter((promo) => promo.is_active)
+        .map((promo) => ({
+          value: promo.code,
+          label: promo.description ? `${promo.code} — ${promo.description}` : promo.code,
+        })),
+    [promos]
+  )
+  const defaultPromoValue = pendingSettings.default_promo_code || ''
+  const promoExists =
+    !defaultPromoValue || promoOptions.some((option) => option.value === defaultPromoValue)
+
+  const handleFieldChange = (key: string, value: any) => {
+    setPendingSettings((prev) => ({
+      ...(prev || {}),
+      [key]: value,
+    }))
+  }
+
+  const normalizeSettings = (settings?: Record<string, any>) => {
+    if (!settings) return {}
+    const normalized: Record<string, any> = {}
+    Object.entries(settings).forEach(([key, value]) => {
+      if (value === undefined) {
+        return
+      }
+      normalized[key] = value === null ? '' : value
+    })
+    return normalized
+  }
+
+  const hasPaymentChanges =
+    !!paySettings &&
+    JSON.stringify(normalizeSettings(pendingSettings)) !== JSON.stringify(normalizeSettings(paySettings))
+
+  const handleResetPayments = () => {
+    if (paySettings) {
+      setPendingSettings({ ...paySettings })
+    } else {
+      setPendingSettings({})
+    }
+  }
+
+  const handleSavePayments = () => {
+    const payload = { ...(pendingSettings || {}) }
+    if ('default_promo_code' in payload) {
+      const val = payload.default_promo_code
+      payload.default_promo_code = val ? String(val).toUpperCase() : ''
+    }
+    savePaymentSettings.mutate(payload)
+  }
 
   return (
     <div className="space-y-8">
@@ -157,7 +242,11 @@ const Integrations = () => {
                     const clientId = connectForm.client_id
                     const redirectUri = connectForm.redirect_uri
                     if (!domain || !clientId || !redirectUri) {
-                      alert('Укажите домен, client_id и redirect_uri для формирования ссылки авторизации.')
+                  showModal({
+                    title: 'Недостаточно данных',
+                    message: 'Укажите домен, client_id и redirect_uri для формирования ссылки авторизации.',
+                    tone: 'error',
+                  })
                       return
                     }
                     const url =
@@ -195,8 +284,8 @@ const Integrations = () => {
                 <input
                   type="radio"
                   name="payment_provider"
-                  checked={(paySettings?.payment_provider || 'yookassa') === 'yookassa'}
-                  onChange={() => saveSetting.mutate({ key: 'payment_provider', value: 'yookassa', category: 'payments' })}
+                  checked={(pendingSettings.payment_provider || 'yookassa') === 'yookassa'}
+                  onChange={() => handleFieldChange('payment_provider', 'yookassa')}
                 />
                 YooKassa
               </label>
@@ -204,8 +293,8 @@ const Integrations = () => {
                 <input
                   type="radio"
                   name="payment_provider"
-                  checked={paySettings?.payment_provider === 'tinkoff'}
-                  onChange={() => saveSetting.mutate({ key: 'payment_provider', value: 'tinkoff', category: 'payments' })}
+                  checked={pendingSettings.payment_provider === 'tinkoff'}
+                  onChange={() => handleFieldChange('payment_provider', 'tinkoff')}
                 />
                 Tinkoff
               </label>
@@ -213,13 +302,27 @@ const Integrations = () => {
                 onClick={async () => {
                   const res = await api.get('/payments/health')
                   if (res.data?.ok && res.data?.confirmation_url) {
-                    if (confirm('Провайдер доступен. Открыть ссылку оплаты для проверки?')) {
-                      window.open(res.data.confirmation_url, '_blank')
-                    }
-                    setLastHealth({ ok: true, url: res.data.confirmation_url })
+                    const confirmationUrl = res.data.confirmation_url as string
+                    setLastHealth({ ok: true, url: confirmationUrl })
+                    showModal({
+                      title: 'Провайдер доступен',
+                      message: 'Провайдер доступен. Открыть ссылку оплаты для проверки?',
+                      actions: [
+                        { label: 'Позже', variant: 'secondary' },
+                        {
+                          label: 'Открыть ссылку',
+                          variant: 'primary',
+                          onClick: () => window.open(confirmationUrl, '_blank'),
+                        },
+                      ],
+                    })
                   } else {
-                    alert('Провайдер недоступен. Проверьте ключи/настройки.')
                     setLastHealth({ ok: false })
+                    showModal({
+                      title: 'Провайдер недоступен',
+                      message: 'Проверьте ключи и настройки платёжной системы.',
+                      tone: 'error',
+                    })
                   }
                 }}
                 className="px-3 py-1 border border-gray-300 rounded-lg hover:bg-gray-100 text-sm"
@@ -229,8 +332,13 @@ const Integrations = () => {
               <button
                 onClick={async () => {
                   const res = await api.get('/payments/health?provider=yookassa')
-                  setLastHealth({ provider: 'YooKassa', ok: !!res.data?.ok, url: res.data?.confirmation_url })
-                  alert(res.data?.ok ? 'YooKassa: OK' : 'YooKassa: ошибка')
+                  const ok = !!res.data?.ok
+                  setLastHealth({ provider: 'YooKassa', ok, url: res.data?.confirmation_url })
+                  showModal({
+                    title: 'Проверка YooKassa',
+                    message: ok ? 'YooKassa: OK' : 'YooKassa: ошибка',
+                    tone: ok ? 'success' : 'error',
+                  })
                 }}
                 className="px-3 py-1 border border-gray-300 rounded-lg hover:bg-gray-100 text-sm"
               >
@@ -239,8 +347,13 @@ const Integrations = () => {
               <button
                 onClick={async () => {
                   const res = await api.get('/payments/health?provider=tinkoff')
-                  setLastHealth({ provider: 'Tinkoff', ok: !!res.data?.ok, url: res.data?.confirmation_url })
-                  alert(res.data?.ok ? 'Tinkoff: OK' : 'Tinkoff: ошибка')
+                  const ok = !!res.data?.ok
+                  setLastHealth({ provider: 'Tinkoff', ok, url: res.data?.confirmation_url })
+                  showModal({
+                    title: 'Проверка Tinkoff',
+                    message: ok ? 'Tinkoff: OK' : 'Tinkoff: ошибка',
+                    tone: ok ? 'success' : 'error',
+                  })
                 }}
                 className="px-3 py-1 border border-gray-300 rounded-lg hover:bg-gray-100 text-sm"
               >
@@ -261,14 +374,26 @@ const Integrations = () => {
 
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Промокод по умолчанию (автоприменение)</label>
-            <input
-              type="text"
-              defaultValue={paySettings?.default_promo_code || ''}
-              onBlur={(e) => saveSetting.mutate({ key: 'default_promo_code', value: e.target.value.toUpperCase(), category: 'payments' })}
+            <select
+              value={defaultPromoValue}
+              onChange={(e) => handleFieldChange('default_promo_code', e.target.value.toUpperCase())}
               className="w-full px-3 py-2 border border-gray-300 rounded-lg"
-              placeholder="Напр., FIT2025"
-            />
-            <p className="text-xs text-gray-500 mt-1">Если указан, будет автоматически применяться в боте при создании оплаты (если действителен для клиента).</p>
+            >
+              <option value="">— без промокода —</option>
+              {!promoExists && (
+                <option value={defaultPromoValue}>
+                  {defaultPromoValue} (неактивен)
+                </option>
+              )}
+              {promoOptions.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+            <p className="text-xs text-gray-500 mt-1">
+              Выберите промокод из заранее созданных в разделе «Маркетинг». Если оставить поле пустым, автоприменение отключено.
+            </p>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -277,22 +402,22 @@ const Integrations = () => {
               <input
                 type="text"
                 placeholder="Shop ID"
-                defaultValue={paySettings?.yookassa_shop_id || ''}
-                onBlur={(e) => saveSetting.mutate({ key: 'yookassa_shop_id', value: e.target.value, category: 'payments' })}
+                value={pendingSettings.yookassa_shop_id || ''}
+                onChange={(e) => handleFieldChange('yookassa_shop_id', e.target.value)}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg"
               />
               <input
                 type="password"
                 placeholder="Secret Key"
-                defaultValue={paySettings?.yookassa_secret_key || ''}
-                onBlur={(e) => saveSetting.mutate({ key: 'yookassa_secret_key', value: e.target.value, category: 'payments' })}
+                value={pendingSettings.yookassa_secret_key || ''}
+                onChange={(e) => handleFieldChange('yookassa_secret_key', e.target.value)}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg"
               />
               <input
                 type="text"
                 placeholder="Return URL"
-                defaultValue={paySettings?.yookassa_return_url || ''}
-                onBlur={(e) => saveSetting.mutate({ key: 'yookassa_return_url', value: e.target.value, category: 'payments' })}
+                value={pendingSettings.yookassa_return_url || ''}
+                onChange={(e) => handleFieldChange('yookassa_return_url', e.target.value)}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg"
               />
             </div>
@@ -301,25 +426,44 @@ const Integrations = () => {
               <input
                 type="text"
                 placeholder="Terminal Key"
-                defaultValue={paySettings?.tinkoff_terminal_key || ''}
-                onBlur={(e) => saveSetting.mutate({ key: 'tinkoff_terminal_key', value: e.target.value, category: 'payments' })}
+                value={pendingSettings.tinkoff_terminal_key || ''}
+                onChange={(e) => handleFieldChange('tinkoff_terminal_key', e.target.value)}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg"
               />
               <input
                 type="password"
                 placeholder="Secret Key"
-                defaultValue={paySettings?.tinkoff_secret_key || ''}
-                onBlur={(e) => saveSetting.mutate({ key: 'tinkoff_secret_key', value: e.target.value, category: 'payments' })}
+                value={pendingSettings.tinkoff_secret_key || ''}
+                onChange={(e) => handleFieldChange('tinkoff_secret_key', e.target.value)}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg"
               />
               <input
                 type="text"
                 placeholder="Return URL"
-                defaultValue={paySettings?.tinkoff_return_url || ''}
-                onBlur={(e) => saveSetting.mutate({ key: 'tinkoff_return_url', value: e.target.value, category: 'payments' })}
+                value={pendingSettings.tinkoff_return_url || ''}
+                onChange={(e) => handleFieldChange('tinkoff_return_url', e.target.value)}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg"
               />
             </div>
+          </div>
+
+          <div className="flex flex-col md:flex-row md:justify-end gap-2 border-t border-gray-200 pt-4 mt-6">
+            <button
+              type="button"
+              onClick={handleResetPayments}
+              className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-100 text-sm disabled:opacity-60 disabled:cursor-not-allowed"
+              disabled={!hasPaymentChanges || savePaymentSettings.isPending}
+            >
+              Сбросить изменения
+            </button>
+            <button
+              type="button"
+              onClick={handleSavePayments}
+              className="px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 text-sm disabled:opacity-60 disabled:cursor-not-allowed"
+              disabled={!hasPaymentChanges || savePaymentSettings.isPending}
+            >
+              {savePaymentSettings.isPending ? 'Сохранение…' : 'Сохранить настройки'}
+            </button>
           </div>
 
           <div className="border-t pt-4">
@@ -341,7 +485,13 @@ const Integrations = () => {
                     const res = await api.post('/payments/test-init', { amount, description })
                     const url = (res.data && res.data.confirmation_url) as string
                     if (url) window.open(url, '_blank')
-                    else alert('Не удалось получить ссылку оплаты')
+                  else {
+                    showModal({
+                      title: 'Не удалось получить ссылку',
+                      message: 'Ссылка оплаты не вернулась от сервиса. Проверьте настройки.',
+                      tone: 'error',
+                    })
+                  }
                   }}
                   className="px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700"
                 >

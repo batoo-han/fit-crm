@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api } from '../services/api'
+import { useModal } from '../components/ui/modal/ModalContext'
 
 type Pipeline = {
   id: number
@@ -12,6 +13,7 @@ type Pipeline = {
 
 const Pipelines = () => {
   const queryClient = useQueryClient()
+  const { showModal } = useModal()
   const [editing, setEditing] = useState<Pipeline | null>(null)
   const [form, setForm] = useState<Pipeline | null>(null as unknown as Pipeline)
   const [assignMode, setAssignMode] = useState(false)
@@ -116,7 +118,11 @@ const Pipelines = () => {
 
   const onSubmit = () => {
     if (!form?.name || form.name.trim().length === 0) {
-      alert('Название воронки обязательно')
+      showModal({
+        title: 'Название воронки',
+        message: 'Название воронки обязательно',
+        tone: 'error',
+      })
       return
     }
     const payload = {
@@ -144,7 +150,11 @@ const Pipelines = () => {
       if (value.trim() === '') return {}
       return JSON.parse(value)
     } catch {
-      alert('Параметры должны быть корректным JSON')
+      showModal({
+        title: 'Некорректный формат',
+        message: 'Параметры должны быть корректным JSON',
+        tone: 'error',
+      })
       return form?.params || {}
     }
   }
