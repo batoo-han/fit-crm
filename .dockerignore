@@ -23,4 +23,6 @@ Thumbs.db
 # Local website (not needed in images)
 dnk/
 
+uploads/*
+data/programs/*
 
