@@ -41,6 +41,65 @@ ALLOWED_DELIVERY_CHANNELS = {"email", "telegram"}
 router = APIRouter()
 
 
+class ValidatePromoRequest(BaseModel):
+    """Request model for promo code validation on website."""
+    code: str
+    service: str  # Service ID to get base price
+    email: str | None = None  # Optional client email for per-client limit check
+
+
+@router.post("/validate-promo")
+async def validate_promo_for_website(request: ValidatePromoRequest, db: Session = Depends(get_db_session)):
+    """Validate promo code for website purchase (public endpoint)."""
+    try:
+        # Get service config to get base price
+        service_config = get_service_config(request.service)
+        if not service_config:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Неизвестный тариф")
+        
+        base_amount = service_config["price"]
+        
+        # Find client by email if provided
+        client = None
+        if request.email:
+            client = db.query(Client).filter(
+                or_(Client.email == request.email, Client.phone_number == request.email)
+            ).first()
+        
+        # Validate promo code
+        try:
+            promo_data = PromoService.validate_code(db, request.code.upper().strip(), client)
+            promo = promo_data["promo"]
+            
+            # Apply discount
+            discount_info = PromoService.apply_discount(base_amount, promo)
+            
+            return {
+                "valid": True,
+                "promo": {
+                    "code": promo.code,
+                    "discount_type": promo.discount_type,
+                    "discount_value": promo.discount_value,
+                },
+                "original_amount": base_amount,
+                "discount": discount_info["discount"],
+                "final_amount": discount_info["final_amount"],
+            }
+        except ValueError as promo_error:
+            return {
+                "valid": False,
+                "error": str(promo_error),
+            }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error validating promo code: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Ошибка при проверке промокода",
+        )
+
+
 class ContactFormRequest(BaseModel):
     """Request model for website contact form."""
     name: str
