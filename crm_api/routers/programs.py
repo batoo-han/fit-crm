@@ -417,7 +417,24 @@ async def export_pdf(
         os.makedirs("uploads", exist_ok=True)
         target_name = os.path.basename(pdf_path)
         
-        # If file with same name exists in uploads, keep the new one (it already has unique number)
+        # Delete old PDF files for this client with the same date before copying new one
+        # Extract date from filename (format: <id>_<weeks>_weeks_<date>_<number>.pdf)
+        import re
+        import glob
+        pdf_date_match = re.search(rf"{client.id}_\d+_weeks_(\d{{8}})_\d{{4}}\.pdf", target_name)
+        if pdf_date_match:
+            pdf_date = pdf_date_match.group(1)
+            # Find all PDFs for this client with the same date
+            pattern = os.path.join("uploads", f"{client.id}_*_weeks_{pdf_date}_*.pdf")
+            old_pdfs = glob.glob(pattern)
+            for old_pdf in old_pdfs:
+                try:
+                    if os.path.exists(old_pdf):
+                        os.remove(old_pdf)
+                        logger.info(f"Deleted old PDF file: {old_pdf}")
+                except Exception as e:
+                    logger.warning(f"Could not delete old PDF file {old_pdf}: {e}")
+        
         # Normalize path separators for cross-platform compatibility
         target_path = os.path.normpath(os.path.join("uploads", target_name))
         

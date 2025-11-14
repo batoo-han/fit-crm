@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from 'react'
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api } from '../services/api'
 import { useModal } from '../components/ui/modal/ModalContext'
@@ -76,8 +76,8 @@ const WebsiteSettings = () => {
   const queryClient = useQueryClient()
   const { showModal } = useModal()
   const [activeTab, setActiveTab] = useState('general')
-  const [settings, setSettings] = useState<any>({})
-  const [widgetSettings, setWidgetSettings] = useState<any>({})
+  const [savedSettings, setSavedSettings] = useState<any>({}) // Сохранённые настройки из БД
+  const [pendingSettings, setPendingSettings] = useState<any>({}) // Несохранённые изменения
   const [logoCropSource, setLogoCropSource] = useState<string | null>(null)
   const [logoCropMeta, setLogoCropMeta] = useState<{ name: string; type: string } | null>(null)
   const [isUploadingLogo, setIsUploadingLogo] = useState(false)
@@ -91,14 +91,25 @@ const WebsiteSettings = () => {
     },
   })
 
+  // Инициализация сохранённых настроек
   useEffect(() => {
     if (allSettings) {
       const rawSettings = allSettings.settings || {}
       const normalizedSettings = normalizeSettings(rawSettings)
-      setSettings(normalizedSettings)
-      setWidgetSettings(normalizedSettings.widget || {})
+      setSavedSettings(normalizedSettings)
+      setPendingSettings(normalizedSettings) // Инициализируем pending из saved
     }
   }, [allSettings])
+
+  // Сброс pending к saved при переключении вкладок
+  const prevTabRef = useRef(activeTab)
+  useEffect(() => {
+    // Сбрасываем только при реальном переключении вкладки, не при первой загрузке
+    if (prevTabRef.current !== activeTab && Object.keys(savedSettings).length > 0) {
+      setPendingSettings({ ...savedSettings })
+    }
+    prevTabRef.current = activeTab
+  }, [activeTab, savedSettings])
 
   useEffect(() => {
     return () => {
@@ -116,6 +127,8 @@ const WebsiteSettings = () => {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['website-settings'] })
+      // После успешного сохранения обновляем savedSettings
+      setSavedSettings({ ...pendingSettings })
       showModal({
         title: 'Настройки сохранены',
         message: 'Изменения успешно применены.',
@@ -127,12 +140,12 @@ const WebsiteSettings = () => {
   const handleSave = () => {
     const updates: any = {}
     
-    // Собираем все настройки для сохранения
-    Object.keys(settings).forEach(category => {
-      Object.keys(settings[category] || {}).forEach(key => {
+    // Собираем все настройки для сохранения из pendingSettings
+    Object.keys(pendingSettings).forEach(category => {
+      Object.keys(pendingSettings[category] || {}).forEach(key => {
         const prefix = category === 'general' ? '' : `${category}_`
         const fullKey = category === 'general' ? key : (key.startsWith(prefix) ? key : `${prefix}${key}`)
-        const value = settings[category][key]
+        const value = pendingSettings[category][key]
         updates[fullKey] = {
           setting_key: fullKey,
           setting_value: typeof value === 'object' ? JSON.stringify(value) : value,
@@ -146,7 +159,8 @@ const WebsiteSettings = () => {
   }
 
   const updateSetting = useCallback((category: string, key: string, value: any) => {
-    setSettings((prev: any) => ({
+    // Обновляем только pendingSettings, не сохраняем в БД
+    setPendingSettings((prev: any) => ({
       ...prev,
       [category]: {
         ...(prev?.[category] || {}),
@@ -154,12 +168,6 @@ const WebsiteSettings = () => {
       },
     }))
 
-    if (category === 'widget') {
-      setWidgetSettings((prev: any) => ({
-        ...(prev || {}),
-        [key]: value,
-      }))
-    }
   }, [])
 
   const cleanupLogoCropSource = useCallback(() => {
@@ -292,25 +300,25 @@ const WebsiteSettings = () => {
       <div className="bg-white rounded-lg shadow p-6">
         {activeTab === 'general' && (
           <GeneralSettings
-            settings={settings.general || {}}
+            settings={pendingSettings.general || {}}
             updateSetting={(key: string, value: any) => updateSetting('general', key, value)}
           />
         )}
         {activeTab === 'header' && (
-          <HeaderSettings settings={settings.header || {}} updateSetting={(key: string, value: any) => updateSetting('header', key, value)} />
+          <HeaderSettings settings={pendingSettings.header || {}} updateSetting={(key: string, value: any) => updateSetting('header', key, value)} />
         )}
         {activeTab === 'footer' && (
-          <FooterSettings settings={settings.footer || {}} updateSetting={(key: string, value: any) => updateSetting('footer', key, value)} />
+          <FooterSettings settings={pendingSettings.footer || {}} updateSetting={(key: string, value: any) => updateSetting('footer', key, value)} />
         )}
         {activeTab === 'colors' && (
-          <ColorsSettings settings={settings.colors || {}} updateSetting={(key: string, value: any) => updateSetting('colors', key, value)} />
+          <ColorsSettings settings={pendingSettings.colors || {}} updateSetting={(key: string, value: any) => updateSetting('colors', key, value)} />
         )}
         {activeTab === 'fonts' && (
-          <FontsSettings settings={settings.fonts || {}} updateSetting={(key: string, value: any) => updateSetting('fonts', key, value)} />
+          <FontsSettings settings={pendingSettings.fonts || {}} updateSetting={(key: string, value: any) => updateSetting('fonts', key, value)} />
         )}
         {activeTab === 'widget' && (
           <WidgetSettings
-            settings={widgetSettings || {}}
+            settings={pendingSettings.widget || {}}
             updateSetting={handleWidgetSettingChange}
             onLogoUpload={handleLogoFileSelected}
             onLogoUrlChange={handleManualLogoUrlChange}

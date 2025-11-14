@@ -52,17 +52,22 @@ async def upload_file(
         # Generate meaningful filename based on file_type
         if file_type in ["logo_widget", "logo_site"]:
             # For logos, use simple name: logo_widget.ext or logo_site.ext
-            # If file with same name exists, add timestamp
+            # Replace old file if exists (delete all variants with timestamp)
             base_name = file_type
             new_name = f"{base_name}{ext}"
             target_path = os.path.join(upload_dir, new_name)
             
-            # If file exists, add timestamp to avoid overwriting
-            if os.path.exists(target_path):
-                from datetime import datetime
-                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-                new_name = f"{base_name}_{timestamp}{ext}"
-                target_path = os.path.join(upload_dir, new_name)
+            # Delete old logo files (with and without timestamp)
+            import glob
+            pattern = os.path.join(upload_dir, f"{base_name}*{ext}")
+            old_files = glob.glob(pattern)
+            for old_file in old_files:
+                try:
+                    if os.path.exists(old_file):
+                        os.remove(old_file)
+                        logger.info(f"Deleted old logo file: {old_file}")
+                except Exception as e:
+                    logger.warning(f"Could not delete old logo file {old_file}: {e}")
         else:
             # For other files, use UUID to avoid collisions
             new_name = f"{uuid.uuid4().hex}{ext}"
